@@ -29,7 +29,6 @@
         }
         .macro-color-text { color: #222; font-weight: 900; font-size: 1.2em; text-shadow: 0px 0px 5px rgba(255,255,255,0.8); }
 
-        /* Q와 K 대시보드 스타일 */
         .qk-container { display: flex; gap: 15px; margin-top: 15px; }
         .qk-box { flex: 1; background: #222233; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #444; }
         .qk-title { font-size: 0.9em; color: #aaa; margin-bottom: 5px; }
@@ -96,7 +95,6 @@
                 </tr>
             </table>
 
-            <!-- Q와 K 비교 대시보드 -->
             <div class="qk-container">
                 <div class="qk-box">
                     <div class="qk-title">반응 지수 ($Q = [B]/[A]$)</div>
@@ -135,7 +133,7 @@
             </div>
             
             <div id="vectorSumText" style="text-align:center; margin-top:8px; font-size:0.95em; color:#ddd;">
-                동적 평형 상태 확인 중...
+                시스템 상태 확인 중...
             </div>
         </div>
     </div>
@@ -151,7 +149,6 @@
         let trackedIndex = -1;
         let temperature = 50; 
 
-        // 물리화학적 상수 설정
         const E_AF = 220;  
         const E_AR = 120;  
         const DELTA_H = 100; 
@@ -299,27 +296,32 @@
             
             const qEl = document.getElementById('valQ');
             const relEl = document.getElementById('qkRelation');
+            const margin = K * 0.15; // 입자 수 요동으로 인한 미세 오차 허용 범위 (±15%)
             
+            let thermoState = "eq"; // 열역학적 상태 (기본: 평형)
+
             if (Q === Infinity) {
                 qEl.innerText = '∞';
                 qEl.style.color = '#fff';
+                thermoState = "reverse";
             } else {
                 qEl.innerText = Q.toFixed(3);
-                // 입자 수 요동으로 인한 미세 오차 허용 범위 (±15%)
-                const margin = K * 0.15; 
                 
                 if (Q < K - margin) {
-                    qEl.style.color = '#ff4757'; // 정반응 진행 (붉은색)
+                    qEl.style.color = '#ff4757'; 
                     relEl.innerText = '<';
                     relEl.style.color = '#ff4757';
+                    thermoState = "forward";
                 } else if (Q > K + margin) {
-                    qEl.style.color = '#a4b0be'; // 역반응 진행 (푸른회색)
+                    qEl.style.color = '#a4b0be'; 
                     relEl.innerText = '>';
                     relEl.style.color = '#a4b0be';
+                    thermoState = "reverse";
                 } else {
-                    qEl.style.color = '#ffcc00'; // 평형 (노란색)
+                    qEl.style.color = '#ffcc00'; 
                     relEl.innerText = '≈';
                     relEl.style.color = '#ffcc00';
+                    thermoState = "eq";
                 }
             }
 
@@ -332,6 +334,7 @@
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(${rColor}, ${gbColor}, ${gbColor})`;
 
+            // 반응 속도 벡터 바(Arrow) 계산
             const rateForward = activeA * STERIC_FACTOR;
             const rateReverse = activeB * STERIC_FACTOR;
             const maxRate = 1.0; 
@@ -341,27 +344,35 @@
 
             const netRate = rateForward - rateReverse;
             const sumBar = document.getElementById('vectorSumBar');
-            const sumText = document.getElementById('vectorSumText');
             
+            // 핵심 1: 시각적 화살표는 '현재 전체 속도'에 비례하는 동적 임계값을 사용하여 렌더링 (저온 반응 감지용)
+            const totalRate = rateForward + rateReverse;
+            const dynamicMargin = Math.max(0.01, totalRate * 0.15); // 총 속도의 15% 이하거나 최소 0.01일 때만 요동 처리
             const widthPercent = Math.min((Math.abs(netRate) / maxRate) * 50, 50);
-            const fluctuationMargin = 0.08; 
 
-            if (netRate > fluctuationMargin) {
+            if (netRate > dynamicMargin) {
                 sumBar.style.left = '50%';
                 sumBar.style.width = widthPercent + '%';
                 sumBar.style.backgroundColor = '#ff4757';
                 sumBar.className = 'vector-sum-bar arrow-right';
-                sumText.innerHTML = '순반응: <strong>정반응 (A → B)</strong> 우세';
-            } else if (netRate < -fluctuationMargin) {
+            } else if (netRate < -dynamicMargin) {
                 sumBar.style.left = (50 - widthPercent) + '%';
                 sumBar.style.width = widthPercent + '%';
                 sumBar.style.backgroundColor = '#a4b0be';
                 sumBar.className = 'vector-sum-bar arrow-left';
-                sumText.innerHTML = '순반응: <strong>역반응 (B → A)</strong> 우세';
             } else {
                 sumBar.style.width = '0%';
                 sumBar.className = 'vector-sum-bar';
-                sumText.innerHTML = '순반응: 미세 요동 (<strong>동적 평형 유지 중</strong>)';
+            }
+
+            // 핵심 2: 상태 텍스트 멘트는 오직 열역학적 지표(Q와 K 비교)에 의해서만 결정
+            const sumText = document.getElementById('vectorSumText');
+            if (thermoState === "forward") {
+                sumText.innerHTML = '상태: <strong>정반응 (A → B)</strong> 진행 (비평형 상태)';
+            } else if (thermoState === "reverse") {
+                sumText.innerHTML = '상태: <strong>역반응 (B → A)</strong> 진행 (비평형 상태)';
+            } else {
+                sumText.innerHTML = '상태: 미세 요동 (<strong>동적 평형 유지 중</strong>)';
             }
 
             requestAnimationFrame(animate);
