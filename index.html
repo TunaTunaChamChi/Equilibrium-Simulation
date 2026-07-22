@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>동적 화학 평형 시뮬레이션 (PAIR-C)</title>
+    <title>동적 화학 평형 시뮬레이션 (물리 엔진 적용)</title>
     <style>
         body { font-family: 'Pretendard', sans-serif; background-color: #1e1e2f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         h1 { color: #00d2ff; }
         .container { display: flex; gap: 20px; width: 100%; max-width: 1000px; flex-wrap: wrap; }
         
-        /* 분할 화면 */
         .micro-view, .macro-view { background: #2a2a40; padding: 20px; border-radius: 10px; flex: 1; min-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         canvas { background: #111; border-radius: 5px; width: 100%; height: 300px; border: 1px solid #444; }
         
@@ -19,38 +18,22 @@
         button:hover { background: #0099cc; }
         button.active { background: #ffcc00; color: #000; }
         
-        /* 표 스타일 */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #33334d; border-radius: 5px; overflow: hidden; }
         th, td { padding: 12px; text-align: center; border: 1px solid #444; font-size: 1.1em; }
         th { background: #222233; color: #fff; }
         
-        /* 거시적 색상 박스 */
         .macro-color-box {
-            width: 100%;
-            height: 120px;
-            background-color: rgb(255, 255, 255);
-            border-radius: 8px;
-            margin-bottom: 5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: inset 0 0 15px rgba(0,0,0,0.2);
-            transition: background-color 0.1s;
+            width: 100%; height: 120px; background-color: rgb(255, 255, 255);
+            border-radius: 8px; margin-bottom: 5px; display: flex; align-items: center; justify-content: center;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.2); transition: background-color 0.1s;
         }
-        .macro-color-text {
-            color: #222;
-            font-weight: 900;
-            font-size: 1.2em;
-            text-shadow: 0px 0px 5px rgba(255,255,255,0.8);
-        }
+        .macro-color-text { color: #222; font-weight: 900; font-size: 1.2em; text-shadow: 0px 0px 5px rgba(255,255,255,0.8); }
 
-        /* 반응 속도 벡터 */
         .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; font-weight: bold; }
         .bar-wrapper { flex: 1; background: #444; height: 20px; border-radius: 10px; overflow: hidden; position: relative; }
         .bar-forward { background: #ff4757; height: 100%; width: 0%; float: left; transition: width 0.1s; }
         .bar-reverse { background: #a4b0be; height: 100%; width: 0%; float: right; transition: width 0.1s; }
         
-        /* 순반응 벡터 (화살표) */
         .vector-sum-wrapper { flex: 1; height: 20px; background: #333; border-radius: 10px; position: relative; display: flex; max-width: calc(100% - 140px); margin: 0 auto; }
         .vector-sum-bar { position: absolute; height: 100%; top: 0; transition: width 0.1s, left 0.1s; border-radius: 5px; }
         
@@ -66,12 +49,11 @@
 </head>
 <body>
 
-    <h1>화학 평형 시뮬레이션 ($A \rightleftharpoons B$)</h1>
+    <h1>화학 평형 (물리 엔진 적용 모델)</h1>
     
     <div class="container">
-        <!-- 미시적 관점 (Micro) -->
         <div class="micro-view">
-            <h3>미시적 입자 운동 (Microscopic)</h3>
+            <h3>미시적 입자 운동 (Maxwell-Boltzmann)</h3>
             <canvas id="simCanvas"></canvas>
             
             <div class="controls">
@@ -85,9 +67,12 @@
                     <span id="tempValue">50</span>
                 </div>
             </div>
+            <p style="font-size: 0.85em; color: #aaa; margin-top: 10px; line-height: 1.4;">
+                * <strong>활성화 에너지 엔진:</strong> 입자의 실제 운동 에너지($E_k$)가 $E_a$를 넘을 때만 반응합니다.<br>
+                * 반응 시 주위의 열을 흡수(정반응)하거나 방출(역반응)하여 <strong>입자의 속도가 급격히 변합니다.</strong>
+            </p>
         </div>
 
-        <!-- 거시적 관점 (Macro) -->
         <div class="macro-view">
             <h3>거시적 상태 및 반응 속도 (Macroscopic)</h3>
             
@@ -95,7 +80,6 @@
                 <div id="macroColorBox" class="macro-color-box">
                     <span class="macro-color-text">거시적 용액 색상</span>
                 </div>
-                <div style="font-size: 0.8em; color: #aaa;">* 비어-람베르트 법칙(Beer-Lambert Law) 적용</div>
             </div>
 
             <table>
@@ -111,7 +95,7 @@
                 </tr>
             </table>
 
-            <h4 style="margin-top:25px; margin-bottom: 5px;">반응 속도 (C 차원)</h4>
+            <h4 style="margin-top:25px; margin-bottom: 5px;">실제 유효 충돌 반응 속도</h4>
             
             <div class="vector-container">
                 <span style="width: 60px; text-align: right;">역반응</span>
@@ -149,7 +133,21 @@
         const TOTAL_PARTICLES = 150;
         let particles = [];
         let trackedIndex = -1;
-        let temperature = 50;
+        let temperature = 50; 
+
+        // 물리화학적 상수 설정 (에너지 단위는 임의의 자체 단위)
+        const E_AF = 220;  // 정반응 활성화 에너지 (흡열 반응이므로 높음)
+        const E_AR = 120;  // 역반응 활성화 에너지
+        const DELTA_H = 100; // 반응 엔탈피 (E_AF - E_AR)
+        const STERIC_FACTOR = 0.05; // 에너지를 넘었을 때, 올바른 방향으로 충돌하여 반응할 확률
+
+        // Box-Muller 변환: 정규 분포 난수 생성 (맥스웰-볼츠만 분포를 위함)
+        function randn_bm() {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random();
+            while(v === 0) v = Math.random();
+            return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+        }
 
         class Particle {
             constructor(id) {
@@ -158,37 +156,61 @@
                 this.y = Math.random() * height;
                 this.type = 'A';
                 this.flashTimer = 0;
-                this.setRandomVelocity();
+                this.thermalize();
             }
 
-            setRandomVelocity() {
-                const speed = (Math.random() * 2 + 1) * (temperature / 50) * 0.5;
-                const angle = Math.random() * 2 * Math.PI;
-                this.vx = Math.cos(angle) * speed;
-                this.vy = Math.sin(angle) * speed;
+            // 안데르센 온도조절기: 주변 열원(용매)과의 충돌로 시스템 온도에 맞는 속도를 얻음
+            thermalize() {
+                // v = 정규분포 * sqrt(T/mass). mass=1로 가정.
+                const speedScale = Math.sqrt(temperature) * 0.4; // 0.4는 시각적 스케일링 계수
+                this.vx = randn_bm() * speedScale;
+                this.vy = randn_bm() * speedScale;
             }
 
-            update(kf, kr) {
-                this.x += this.vx * (temperature / 50);
-                this.y += this.vy * (temperature / 50);
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
 
+                // 벽면 충돌 (완전 탄성 충돌)
                 if (this.x <= 0 || this.x >= width) this.vx *= -1;
                 if (this.y <= 0 || this.y >= height) this.vy *= -1;
 
+                // 2% 확률로 주변 열원(용매)과 충돌하여 속도 재조정 (열역학적 평형 유지)
+                if (Math.random() < 0.02) {
+                    this.thermalize();
+                }
+
+                // 현재 입자의 실제 운동 에너지 (E_k = 1/2 * m * v^2, 시각적 계수 보정)
+                // 시각적 스케일(0.4)을 역산하여 실제 에너지를 T 스케일로 환산
+                let ek = 0.5 * (Math.pow(this.vx / 0.4, 2) + Math.pow(this.vy / 0.4, 2));
+
+                // 활성화 에너지 기반 반응 엔진
                 let reacted = false;
-                if (this.type === 'A' && Math.random() < kf) {
-                    this.type = 'B';
-                    reacted = true;
-                } else if (this.type === 'B' && Math.random() < kr) {
-                    this.type = 'A';
-                    reacted = true;
+                if (this.type === 'A' && ek > E_AF) {
+                    if (Math.random() < STERIC_FACTOR) {
+                        this.type = 'B';
+                        // 흡열 반응: 주위 에너지를 흡수하여 자신의 운동 에너지는 감소 (속도 느려짐)
+                        let new_ek = Math.max(ek - DELTA_H, 1); 
+                        let speedRatio = Math.sqrt(new_ek / ek);
+                        this.vx *= speedRatio;
+                        this.vy *= speedRatio;
+                        reacted = true;
+                    }
+                } else if (this.type === 'B' && ek > E_AR) {
+                    if (Math.random() < STERIC_FACTOR) {
+                        this.type = 'A';
+                        // 발열 반응: 에너지를 방출하여 자신의 운동 에너지는 증가 (속도 빨라짐)
+                        let new_ek = ek + DELTA_H;
+                        let speedRatio = Math.sqrt(new_ek / ek);
+                        this.vx *= speedRatio;
+                        this.vy *= speedRatio;
+                        reacted = true;
+                    }
                 }
 
                 if (reacted) {
-                    this.flashTimer = 25; 
-                    this.setRandomVelocity();
+                    this.flashTimer = 25;
                 }
-
                 if (this.flashTimer > 0) this.flashTimer--;
             }
 
@@ -238,17 +260,26 @@
         function animate() {
             ctx.clearRect(0, 0, width, height);
 
-            const kf = 0.001 * Math.pow(temperature / 50, 2); 
-            const kr = 0.0025 * (temperature / 50);
-
             let countA = 0;
             let countB = 0;
+            
+            // 거시적 속도 측정을 위한 임계 에너지 초과 입자 카운팅
+            let activeA = 0; 
+            let activeB = 0;
 
             particles.forEach(p => {
-                p.update(kf, kr);
+                p.update();
                 p.draw();
-                if (p.type === 'A') countA++;
-                else countB++;
+                
+                if (p.type === 'A') {
+                    countA++;
+                    let ek = 0.5 * (Math.pow(p.vx / 0.4, 2) + Math.pow(p.vy / 0.4, 2));
+                    if(ek > E_AF) activeA++;
+                } else {
+                    countB++;
+                    let ek = 0.5 * (Math.pow(p.vx / 0.4, 2) + Math.pow(p.vy / 0.4, 2));
+                    if(ek > E_AR) activeB++;
+                }
             });
 
             document.getElementById('countATable').innerText = countA;
@@ -263,10 +294,14 @@
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(${rColor}, ${gbColor}, ${gbColor})`;
 
-            // 수정 포인트: 100도에서 모든 입자가 반응물 A일 때 발생하는 "절대 최대 반응 속도(0.6)"를 100% 스케일로 지정
-            const rateForward = countA * kf;
-            const rateReverse = countB * kr;
-            const maxRate = 0.6; 
+            // 실제 유효 입자 수에 기반한 반응 속도 계산
+            // 속도 = (E_a를 넘은 입자 수) * (입체 인자 확률)
+            const rateForward = activeA * STERIC_FACTOR;
+            const rateReverse = activeB * STERIC_FACTOR;
+            
+            // 최대치 방어: T=100일 때 초기 최대 반응속도를 기준으로 설정하여 100% 클리핑 원천 차단
+            // 150개 * 약 0.11(맥스웰-볼츠만 분포 상 E>220일 확률) * 0.05 = 약 0.825
+            const maxRate = 1.0; 
             
             document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
             document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
@@ -277,13 +312,16 @@
             
             const widthPercent = Math.min((Math.abs(netRate) / maxRate) * 50, 50);
 
-            if (netRate > 0.01) {
+            // 미시적 요동(Fluctuation)을 필터링하기 위한 임계값 (입자 1~2개의 요동은 평형으로 간주)
+            const fluctuationMargin = 0.08; 
+
+            if (netRate > fluctuationMargin) {
                 sumBar.style.left = '50%';
                 sumBar.style.width = widthPercent + '%';
                 sumBar.style.backgroundColor = '#ff4757';
                 sumBar.className = 'vector-sum-bar arrow-right';
                 sumText.innerHTML = '순반응: <strong>정반응 (A → B)</strong> 우세';
-            } else if (netRate < -0.01) {
+            } else if (netRate < -fluctuationMargin) {
                 sumBar.style.left = (50 - widthPercent) + '%';
                 sumBar.style.width = widthPercent + '%';
                 sumBar.style.backgroundColor = '#a4b0be';
@@ -292,7 +330,7 @@
             } else {
                 sumBar.style.width = '0%';
                 sumBar.className = 'vector-sum-bar';
-                sumText.innerHTML = '순반응: 0 (<strong>완전한 동적 평형</strong>)';
+                sumText.innerHTML = '순반응: 미세 요동 (<strong>동적 평형 유지 중</strong>)';
             }
 
             requestAnimationFrame(animate);
