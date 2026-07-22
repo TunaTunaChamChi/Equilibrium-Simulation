@@ -9,7 +9,7 @@
         h1 { color: #00d2ff; }
         .container { display: flex; gap: 20px; width: 100%; max-width: 1000px; flex-wrap: wrap; }
         
-        /* P(Pattern): 분할 화면 */
+        /* 분할 화면 */
         .micro-view, .macro-view { background: #2a2a40; padding: 20px; border-radius: 10px; flex: 1; min-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         canvas { background: #111; border-radius: 5px; width: 100%; height: 300px; border: 1px solid #444; }
         
@@ -19,19 +19,50 @@
         button:hover { background: #0099cc; }
         button.active { background: #ffcc00; color: #000; }
         
-        /* C(Causal Mechanisms): 반응 속도 벡터 */
-        .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 20px; font-weight: bold; }
+        /* 표 스타일 */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #33334d; border-radius: 5px; overflow: hidden; }
+        th, td { padding: 12px; text-align: center; border: 1px solid #444; font-size: 1.1em; }
+        th { background: #222233; color: #fff; }
+        
+        /* 거시적 색상 박스 */
+        .macro-color-box {
+            width: 100%;
+            height: 120px;
+            background-color: rgb(255, 255, 255); /* 기본 투명(흰색 배경) */
+            border-radius: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.2);
+            transition: background-color 0.1s;
+        }
+        .macro-color-text {
+            color: #222;
+            font-weight: 900;
+            font-size: 1.2em;
+            text-shadow: 0px 0px 5px rgba(255,255,255,0.8);
+        }
+
+        /* 반응 속도 벡터 */
+        .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; font-weight: bold; }
         .bar-wrapper { flex: 1; background: #444; height: 20px; border-radius: 10px; overflow: hidden; position: relative; }
         .bar-forward { background: #ff4757; height: 100%; width: 0%; float: left; transition: width 0.1s; }
-        .bar-reverse { background: #1e90ff; height: 100%; width: 0%; float: right; transition: width 0.1s; }
+        .bar-reverse { background: #a4b0be; height: 100%; width: 0%; float: right; transition: width 0.1s; }
         
-        /* 농도 시각화 */
-        .chart-container { display: flex; align-items: flex-end; height: 150px; background: #111; border-radius: 5px; padding: 10px; margin-top: 20px; gap: 20px; }
-        .chart-bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-        .bar-fill { width: 50px; transition: height 0.2s; border-radius: 5px 5px 0 0; }
-        .fill-A { background: #ff4757; }
-        .fill-B { background: #1e90ff; }
-        .chart-label { margin-top: 10px; font-weight: bold; }
+        /* 순반응 벡터 (화살표) */
+        .vector-sum-wrapper { flex: 1; height: 20px; background: #333; border-radius: 10px; position: relative; display: flex; max-width: calc(100% - 140px); margin: 0 auto; }
+        .vector-sum-bar { position: absolute; height: 100%; top: 0; transition: width 0.1s, left 0.1s; border-radius: 5px; }
+        
+        /* 화살표 CSS 드로잉 */
+        .vector-sum-bar.arrow-right::after {
+            content: ""; position: absolute; right: -10px; top: 0;
+            border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 10px solid #ff4757;
+        }
+        .vector-sum-bar.arrow-left::before {
+            content: ""; position: absolute; left: -10px; top: 0;
+            border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-right: 10px solid #a4b0be;
+        }
     </style>
 </head>
 <body>
@@ -61,20 +92,33 @@
         <div class="macro-view">
             <h3>거시적 상태 및 반응 속도 (Macroscopic)</h3>
             
-            <div class="chart-container">
-                <div class="chart-bar">
-                    <div id="barA" class="bar-fill fill-A" style="height: 100%;"></div>
-                    <div class="chart-label">반응물 [A] (<span id="countA"></span>)</div>
+            <!-- 물리적 고증을 거친 거시적 색상 시각화 -->
+            <div style="display:flex; flex-direction: column; align-items: center; margin-bottom: 15px;">
+                <div id="macroColorBox" class="macro-color-box">
+                    <span class="macro-color-text">거시적 용액 색상</span>
                 </div>
-                <div class="chart-bar">
-                    <div id="barB" class="bar-fill fill-B" style="height: 0%;"></div>
-                    <div class="chart-label">생성물 [B] (<span id="countB"></span>)</div>
-                </div>
+                <div style="font-size: 0.8em; color: #aaa;">* 비어-람베르트 법칙(Beer-Lambert Law) 적용</div>
             </div>
 
-            <h4 style="margin-top:30px;">반응 속도 벡터 (C 차원)</h4>
+            <!-- 반응물/생성물 개수 표 -->
+            <table>
+                <tr>
+                    <th style="width: 20%;">구분</th>
+                    <th style="width: 40%; color: #ff4757;">반응물 A (붉은색)</th>
+                    <th style="width: 40%; color: #a4b0be;">생성물 B (투명)</th>
+                </tr>
+                <tr>
+                    <td style="font-weight: bold;">개수</td>
+                    <td id="countATable" style="font-weight: bold; color: #ff4757;">0</td>
+                    <td id="countBTable" style="font-weight: bold; color: #a4b0be;">0</td>
+                </tr>
+            </table>
+
+            <h4 style="margin-top:25px; margin-bottom: 5px;">반응 속도 (C 차원)</h4>
+            
+            <!-- 개별 반응 속도 벡터 -->
             <div class="vector-container">
-                <span>역반응 (B→A)</span>
+                <span style="width: 60px; text-align: right;">역반응</span>
                 <div class="bar-wrapper">
                     <div id="vectorReverse" class="bar-reverse"></div>
                 </div>
@@ -82,11 +126,24 @@
                 <div class="bar-wrapper">
                     <div id="vectorForward" class="bar-forward"></div>
                 </div>
-                <span>정반응 (A→B)</span>
+                <span style="width: 60px;">정반응</span>
             </div>
-            <p style="text-align: center; font-size: 0.9em; color: #aaa; margin-top: 10px;">
-                두 벡터의 길이가 같아지면 <strong>동적 평형 상태</strong>입니다. 겉보기 변화는 없지만 반응은 계속 일어납니다.
-            </p>
+
+            <!-- 순반응(벡터 합) 화살표 -->
+            <div class="vector-container" style="margin-top: 5px;">
+                <span style="width: 60px;"></span>
+                <div class="vector-sum-wrapper">
+                    <!-- 중앙 기준선 -->
+                    <div style="position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #fff; z-index: 10; transform: translateX(-50%);"></div>
+                    <!-- 합산 벡터 바 -->
+                    <div id="vectorSumBar" class="vector-sum-bar"></div>
+                </div>
+                <span style="width: 60px;"></span>
+            </div>
+            
+            <div id="vectorSumText" style="text-align:center; margin-top:8px; font-size:0.95em; color:#ddd;">
+                동적 평형 상태 확인 중...
+            </div>
         </div>
     </div>
 
@@ -99,9 +156,8 @@
         const TOTAL_PARTICLES = 150;
         let particles = [];
         let trackedIndex = -1;
-        let temperature = 50; // Base temperature
+        let temperature = 50;
 
-        // 입자 객체
         class Particle {
             constructor(id) {
                 this.id = id;
@@ -120,14 +176,12 @@
             }
 
             update(kf, kr) {
-                // 물리적 이동 (I 차원 - 무작위 운동)
                 this.x += this.vx * (temperature / 50);
                 this.y += this.vy * (temperature / 50);
 
                 if (this.x <= 0 || this.x >= width) this.vx *= -1;
                 if (this.y <= 0 || this.y >= height) this.vy *= -1;
 
-                // 반응 확률 계산 (R 차원 - 독립적 규칙)
                 let reacted = false;
                 if (this.type === 'A' && Math.random() < kf) {
                     this.type = 'B';
@@ -138,7 +192,7 @@
                 }
 
                 if (reacted) {
-                    this.flashTimer = 15; // 반응 순간 반짝임 (I 차원 - 유효 충돌 시각화)
+                    this.flashTimer = 15;
                     this.setRandomVelocity();
                 }
 
@@ -148,17 +202,16 @@
             draw() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 6, 0, Math.PI * 2);
-                ctx.fillStyle = this.type === 'A' ? '#ff4757' : '#1e90ff';
+                // 미시적 화면에서는 추적을 위해 B를 회백색(#a4b0be)으로 표시
+                ctx.fillStyle = this.type === 'A' ? '#ff4757' : '#a4b0be';
                 ctx.fill();
 
-                // 반응(상태 변화) 시 흰색 테두리 반짝임
                 if (this.flashTimer > 0) {
                     ctx.strokeStyle = `rgba(255, 255, 255, ${this.flashTimer / 15})`;
                     ctx.lineWidth = 3;
                     ctx.stroke();
                 }
 
-                // 단일 입자 추적 하이라이트 (A 차원)
                 if (this.id === trackedIndex) {
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, 12, 0, Math.PI * 2);
@@ -169,12 +222,10 @@
             }
         }
 
-        // 초기화
         for (let i = 0; i < TOTAL_PARTICLES; i++) {
             particles.push(new Particle(i));
         }
 
-        // UI 이벤트 바인딩
         document.getElementById('trackBtn').addEventListener('click', function() {
             if (trackedIndex === -1) {
                 trackedIndex = Math.floor(Math.random() * TOTAL_PARTICLES);
@@ -192,11 +243,9 @@
             document.getElementById('tempValue').innerText = temperature;
         });
 
-        // 메인 루프
         function animate() {
             ctx.clearRect(0, 0, width, height);
 
-            // 흡열 반응 가정 (온도가 높을수록 정반응 속도 상수가 더 크게 증가)
             const kf = 0.002 * Math.pow(temperature / 50, 2); 
             const kr = 0.005 * (temperature / 50);
 
@@ -210,19 +259,55 @@
                 else countB++;
             });
 
-            // 매크로 상태 업데이트 (P 차원)
-            document.getElementById('countA').innerText = countA;
-            document.getElementById('countB').innerText = countB;
-            document.getElementById('barA').style.height = (countA / TOTAL_PARTICLES * 100) + '%';
-            document.getElementById('barB').style.height = (countB / TOTAL_PARTICLES * 100) + '%';
+            // 1. 표(Table) 업데이트
+            document.getElementById('countATable').innerText = countA;
+            document.getElementById('countBTable').innerText = countB;
 
-            // 반응 속도 벡터 업데이트 (C 차원)
+            // 2. 비어-람베르트 법칙 기반 거시적 색상 시각화
+            const concA = countA / TOTAL_PARTICLES; 
+            const maxAbsorbance = 1.0; // A가 100%일 때 흡광도 (투과율 10%)
+            const absorbance = maxAbsorbance * concA;
+            const transmittance = Math.pow(10, -absorbance); 
+            
+            // A는 붉은색 파장을 통과(255)시키고, 녹색/청색 파장을 흡수함
+            const rColor = 255;
+            const gbColor = Math.round(255 * transmittance);
+            document.getElementById('macroColorBox').style.backgroundColor = `rgb(${rColor}, ${gbColor}, ${gbColor})`;
+
+            // 3. 반응 속도 벡터 스케일 조정 (T=100일 때 90% 채우도록 설계)
             const rateForward = countA * kf;
             const rateReverse = countB * kr;
-            const maxRate = TOTAL_PARTICLES * 0.015; // 정규화를 위한 임의 최대값
+            const maxRate = (TOTAL_PARTICLES * 0.010) / 0.9; 
             
             document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
             document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
+
+            // 4. 순반응 벡터 합 (화살표)
+            const netRate = rateForward - rateReverse;
+            const sumBar = document.getElementById('vectorSumBar');
+            const sumText = document.getElementById('vectorSumText');
+            
+            // 최대 길이는 절반(50%)이므로 50을 곱함
+            const widthPercent = Math.min((Math.abs(netRate) / maxRate) * 50, 50);
+
+            // 미세한 오차 보정을 위해 임계값(0.02) 설정
+            if (netRate > 0.02) {
+                sumBar.style.left = '50%';
+                sumBar.style.width = widthPercent + '%';
+                sumBar.style.backgroundColor = '#ff4757';
+                sumBar.className = 'vector-sum-bar arrow-right';
+                sumText.innerHTML = '순반응: <strong>정반응 (A → B)</strong> 우세';
+            } else if (netRate < -0.02) {
+                sumBar.style.left = (50 - widthPercent) + '%';
+                sumBar.style.width = widthPercent + '%';
+                sumBar.style.backgroundColor = '#a4b0be';
+                sumBar.className = 'vector-sum-bar arrow-left';
+                sumText.innerHTML = '순반응: <strong>역반응 (B → A)</strong> 우세';
+            } else {
+                sumBar.style.width = '0%';
+                sumBar.className = 'vector-sum-bar';
+                sumText.innerHTML = '순반응: 0 (<strong>완전한 동적 평형</strong>)';
+            }
 
             requestAnimationFrame(animate);
         }
