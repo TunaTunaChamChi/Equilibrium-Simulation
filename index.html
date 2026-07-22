@@ -29,7 +29,14 @@
         }
         .macro-color-text { color: #222; font-weight: 900; font-size: 1.2em; text-shadow: 0px 0px 5px rgba(255,255,255,0.8); }
 
-        .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; font-weight: bold; }
+        /* Q와 K 대시보드 스타일 */
+        .qk-container { display: flex; gap: 15px; margin-top: 15px; }
+        .qk-box { flex: 1; background: #222233; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #444; }
+        .qk-title { font-size: 0.9em; color: #aaa; margin-bottom: 5px; }
+        .qk-value { font-size: 1.8em; font-weight: bold; font-family: monospace; transition: color 0.2s; }
+        .qk-relation { display: flex; align-items: center; justify-content: center; font-size: 1.5em; font-weight: bold; width: 40px; }
+
+        .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 15px; font-weight: bold; }
         .bar-wrapper { flex: 1; background: #444; height: 20px; border-radius: 10px; overflow: hidden; position: relative; }
         .bar-forward { background: #ff4757; height: 100%; width: 0%; float: left; transition: width 0.1s; }
         .bar-reverse { background: #a4b0be; height: 100%; width: 0%; float: right; transition: width 0.1s; }
@@ -37,14 +44,8 @@
         .vector-sum-wrapper { flex: 1; height: 20px; background: #333; border-radius: 10px; position: relative; display: flex; max-width: calc(100% - 140px); margin: 0 auto; }
         .vector-sum-bar { position: absolute; height: 100%; top: 0; transition: width 0.1s, left 0.1s; border-radius: 5px; }
         
-        .vector-sum-bar.arrow-right::after {
-            content: ""; position: absolute; right: -10px; top: 0;
-            border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 10px solid #ff4757;
-        }
-        .vector-sum-bar.arrow-left::before {
-            content: ""; position: absolute; left: -10px; top: 0;
-            border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-right: 10px solid #a4b0be;
-        }
+        .vector-sum-bar.arrow-right::after { content: ""; position: absolute; right: -10px; top: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 10px solid #ff4757; }
+        .vector-sum-bar.arrow-left::before { content: ""; position: absolute; left: -10px; top: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-right: 10px solid #a4b0be; }
     </style>
 </head>
 <body>
@@ -95,6 +96,21 @@
                 </tr>
             </table>
 
+            <!-- Q와 K 비교 대시보드 -->
+            <div class="qk-container">
+                <div class="qk-box">
+                    <div class="qk-title">반응 지수 ($Q = [B]/[A]$)</div>
+                    <div class="qk-value" id="valQ">0.000</div>
+                </div>
+                <div class="qk-relation" id="qkRelation">
+                    =
+                </div>
+                <div class="qk-box">
+                    <div class="qk-title">이론적 평형 상수 ($K$)</div>
+                    <div class="qk-value" id="valK" style="color: #00d2ff;">0.000</div>
+                </div>
+            </div>
+
             <h4 style="margin-top:25px; margin-bottom: 5px;">실제 유효 충돌 반응 속도</h4>
             
             <div class="vector-container">
@@ -141,7 +157,6 @@
         const DELTA_H = 100; 
         const STERIC_FACTOR = 0.05; 
         
-        // 시각적 편안함을 위한 렌더링 스케일 (이 값을 낮추면 물리 연산은 그대로이되 화면 이동만 느려짐)
         const VISUAL_SCALE = 0.15; 
 
         function randn_bm() {
@@ -178,7 +193,6 @@
                     this.thermalize();
                 }
 
-                // 운동 에너지 계산 시 VISUAL_SCALE을 역산하여 본래의 물리적 에너지를 도출
                 let ek = 0.5 * (Math.pow(this.vx / VISUAL_SCALE, 2) + Math.pow(this.vy / VISUAL_SCALE, 2));
 
                 let reacted = false;
@@ -203,7 +217,6 @@
                 }
 
                 if (reacted) {
-                    // 시뮬레이션이 느려진 만큼 플래시 효과 유지 시간을 늘림 (25 -> 40프레임)
                     this.flashTimer = 40;
                 }
                 if (this.flashTimer > 0) this.flashTimer--;
@@ -277,6 +290,38 @@
 
             document.getElementById('countATable').innerText = countA;
             document.getElementById('countBTable').innerText = countB;
+
+            // Q와 K 연산 및 UI 업데이트
+            const K = Math.exp(-DELTA_H / temperature);
+            const Q = countA === 0 ? Infinity : (countB / countA);
+            
+            document.getElementById('valK').innerText = K.toFixed(3);
+            
+            const qEl = document.getElementById('valQ');
+            const relEl = document.getElementById('qkRelation');
+            
+            if (Q === Infinity) {
+                qEl.innerText = '∞';
+                qEl.style.color = '#fff';
+            } else {
+                qEl.innerText = Q.toFixed(3);
+                // 입자 수 요동으로 인한 미세 오차 허용 범위 (±15%)
+                const margin = K * 0.15; 
+                
+                if (Q < K - margin) {
+                    qEl.style.color = '#ff4757'; // 정반응 진행 (붉은색)
+                    relEl.innerText = '<';
+                    relEl.style.color = '#ff4757';
+                } else if (Q > K + margin) {
+                    qEl.style.color = '#a4b0be'; // 역반응 진행 (푸른회색)
+                    relEl.innerText = '>';
+                    relEl.style.color = '#a4b0be';
+                } else {
+                    qEl.style.color = '#ffcc00'; // 평형 (노란색)
+                    relEl.innerText = '≈';
+                    relEl.style.color = '#ffcc00';
+                }
+            }
 
             const concA = countA / TOTAL_PARTICLES; 
             const maxAbsorbance = 0.4; 
