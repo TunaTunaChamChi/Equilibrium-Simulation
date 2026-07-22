@@ -169,7 +169,8 @@
             }
 
             setRandomVelocity() {
-                const speed = (Math.random() * 2 + 1) * (temperature / 50);
+                // 수정됨: 물리적 이동 속도 50% 감속 ( * 0.5 )
+                const speed = (Math.random() * 2 + 1) * (temperature / 50) * 0.5;
                 const angle = Math.random() * 2 * Math.PI;
                 this.vx = Math.cos(angle) * speed;
                 this.vy = Math.sin(angle) * speed;
@@ -192,7 +193,8 @@
                 }
 
                 if (reacted) {
-                    this.flashTimer = 15;
+                    // 반응이 천천히 일어나므로 반짝이는 시간(프레임)을 늘려 시각적 인지 향상
+                    this.flashTimer = 25; 
                     this.setRandomVelocity();
                 }
 
@@ -202,12 +204,11 @@
             draw() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 6, 0, Math.PI * 2);
-                // 미시적 화면에서는 추적을 위해 B를 회백색(#a4b0be)으로 표시
                 ctx.fillStyle = this.type === 'A' ? '#ff4757' : '#a4b0be';
                 ctx.fill();
 
                 if (this.flashTimer > 0) {
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${this.flashTimer / 15})`;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${this.flashTimer / 25})`;
                     ctx.lineWidth = 3;
                     ctx.stroke();
                 }
@@ -246,8 +247,9 @@
         function animate() {
             ctx.clearRect(0, 0, width, height);
 
-            const kf = 0.002 * Math.pow(temperature / 50, 2); 
-            const kr = 0.005 * (temperature / 50);
+            // 수정됨: 타임스케일 감속을 위해 반응 확률(속도 상수 kf, kr)을 기존의 절반으로 축소
+            const kf = 0.001 * Math.pow(temperature / 50, 2); 
+            const kr = 0.0025 * (temperature / 50);
 
             let countA = 0;
             let countB = 0;
@@ -259,25 +261,26 @@
                 else countB++;
             });
 
-            // 1. 표(Table) 업데이트
+            // 1. 표 업데이트
             document.getElementById('countATable').innerText = countA;
             document.getElementById('countBTable').innerText = countB;
 
-            // 2. 비어-람베르트 법칙 기반 거시적 색상 시각화
+            // 2. 비어-람베르트 법칙 기반 거시적 색상 시각화 수정
             const concA = countA / TOTAL_PARTICLES; 
-            const maxAbsorbance = 1.0; // A가 100%일 때 흡광도 (투과율 10%)
+            // 수정됨: 최대 흡광도를 낮춰 맑은 붉은색에서 옅어지는 과정이 명확하게 보이도록 설정
+            const maxAbsorbance = 0.4; 
             const absorbance = maxAbsorbance * concA;
             const transmittance = Math.pow(10, -absorbance); 
             
-            // A는 붉은색 파장을 통과(255)시키고, 녹색/청색 파장을 흡수함
             const rColor = 255;
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(${rColor}, ${gbColor}, ${gbColor})`;
 
-            // 3. 반응 속도 벡터 스케일 조정 (T=100일 때 90% 채우도록 설계)
+            // 3. 반응 속도 벡터 스케일 조정
             const rateForward = countA * kf;
             const rateReverse = countB * kr;
-            const maxRate = (TOTAL_PARTICLES * 0.010) / 0.9; 
+            // 수정됨: kf, kr이 절반으로 줄었으므로 기준 최대치도 0.010 -> 0.005로 조정하여 90% 스케일 유지
+            const maxRate = (TOTAL_PARTICLES * 0.005) / 0.9; 
             
             document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
             document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
@@ -287,17 +290,16 @@
             const sumBar = document.getElementById('vectorSumBar');
             const sumText = document.getElementById('vectorSumText');
             
-            // 최대 길이는 절반(50%)이므로 50을 곱함
             const widthPercent = Math.min((Math.abs(netRate) / maxRate) * 50, 50);
 
-            // 미세한 오차 보정을 위해 임계값(0.02) 설정
-            if (netRate > 0.02) {
+            // 타임스케일이 느려진 만큼 임계값을 0.01로 더 섬세하게 조정
+            if (netRate > 0.01) {
                 sumBar.style.left = '50%';
                 sumBar.style.width = widthPercent + '%';
                 sumBar.style.backgroundColor = '#ff4757';
                 sumBar.className = 'vector-sum-bar arrow-right';
                 sumText.innerHTML = '순반응: <strong>정반응 (A → B)</strong> 우세';
-            } else if (netRate < -0.02) {
+            } else if (netRate < -0.01) {
                 sumBar.style.left = (50 - widthPercent) + '%';
                 sumBar.style.width = widthPercent + '%';
                 sumBar.style.backgroundColor = '#a4b0be';
