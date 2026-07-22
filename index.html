@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>동적 화학 평형 시뮬레이션 (PAIR-C)</title>
+    <style>
+        body { font-family: 'Pretendard', sans-serif; background-color: #1e1e2f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        h1 { color: #00d2ff; }
+        .container { display: flex; gap: 20px; width: 100%; max-width: 1000px; flex-wrap: wrap; }
+        
+        /* P(Pattern): 분할 화면 */
+        .micro-view, .macro-view { background: #2a2a40; padding: 20px; border-radius: 10px; flex: 1; min-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        canvas { background: #111; border-radius: 5px; width: 100%; height: 300px; border: 1px solid #444; }
+        
+        .controls { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
+        .control-group { display: flex; justify-content: space-between; align-items: center; background: #33334d; padding: 10px; border-radius: 5px; }
+        button { background: #00d2ff; border: none; padding: 8px 15px; color: #000; font-weight: bold; border-radius: 5px; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #0099cc; }
+        button.active { background: #ffcc00; color: #000; }
+        
+        /* C(Causal Mechanisms): 반응 속도 벡터 */
+        .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 20px; font-weight: bold; }
+        .bar-wrapper { flex: 1; background: #444; height: 20px; border-radius: 10px; overflow: hidden; position: relative; }
+        .bar-forward { background: #ff4757; height: 100%; width: 0%; float: left; transition: width 0.1s; }
+        .bar-reverse { background: #1e90ff; height: 100%; width: 0%; float: right; transition: width 0.1s; }
+        
+        /* 농도 시각화 */
+        .chart-container { display: flex; align-items: flex-end; height: 150px; background: #111; border-radius: 5px; padding: 10px; margin-top: 20px; gap: 20px; }
+        .chart-bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .bar-fill { width: 50px; transition: height 0.2s; border-radius: 5px 5px 0 0; }
+        .fill-A { background: #ff4757; }
+        .fill-B { background: #1e90ff; }
+        .chart-label { margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>화학 평형 시뮬레이션 ($A \rightleftharpoons B$)</h1>
+    
+    <div class="container">
+        <!-- 미시적 관점 (Micro) -->
+        <div class="micro-view">
+            <h3>미시적 입자 운동 (Microscopic)</h3>
+            <canvas id="simCanvas"></canvas>
+            
+            <div class="controls">
+                <div class="control-group">
+                    <label>단일 입자 추적 (A 차원)</label>
+                    <button id="trackBtn">추적 켜기</button>
+                </div>
+                <div class="control-group">
+                    <label>온도 조절 (R 차원: 흡열 반응 가정)</label>
+                    <input type="range" id="tempSlider" min="20" max="100" value="50">
+                    <span id="tempValue">50</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 거시적 관점 (Macro) -->
+        <div class="macro-view">
+            <h3>거시적 상태 및 반응 속도 (Macroscopic)</h3>
+            
+            <div class="chart-container">
+                <div class="chart-bar">
+                    <div id="barA" class="bar-fill fill-A" style="height: 100%;"></div>
+                    <div class="chart-label">반응물 [A] (<span id="countA"></span>)</div>
+                </div>
+                <div class="chart-bar">
+                    <div id="barB" class="bar-fill fill-B" style="height: 0%;"></div>
+                    <div class="chart-label">생성물 [B] (<span id="countB"></span>)</div>
+                </div>
+            </div>
+
+            <h4 style="margin-top:30px;">반응 속도 벡터 (C 차원)</h4>
+            <div class="vector-container">
+                <span>역반응 (B→A)</span>
+                <div class="bar-wrapper">
+                    <div id="vectorReverse" class="bar-reverse"></div>
+                </div>
+                <div style="width: 2px; height: 30px; background: #fff;"></div> <!-- 평형 기준선 -->
+                <div class="bar-wrapper">
+                    <div id="vectorForward" class="bar-forward"></div>
+                </div>
+                <span>정반응 (A→B)</span>
+            </div>
+            <p style="text-align: center; font-size: 0.9em; color: #aaa; margin-top: 10px;">
+                두 벡터의 길이가 같아지면 <strong>동적 평형 상태</strong>입니다. 겉보기 변화는 없지만 반응은 계속 일어납니다.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width = canvas.offsetWidth;
+        const height = canvas.height = canvas.offsetHeight;
+
+        const TOTAL_PARTICLES = 150;
+        let particles = [];
+        let trackedIndex = -1;
+        let temperature = 50; // Base temperature
+
+        // 입자 객체
+        class Particle {
+            constructor(id) {
+                this.id = id;
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.type = 'A'; // Start as Reactant A
+                this.flashTimer = 0;
+                this.setRandomVelocity();
+            }
+
+            setRandomVelocity() {
+                const speed = (Math.random() * 2 + 1) * (temperature / 50);
+                const angle = Math.random() * 2 * Math.PI;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+            }
+
+            update(kf, kr) {
+                // 물리적 이동 (I 차원 - 무작위 운동)
+                this.x += this.vx * (temperature / 50);
+                this.y += this.vy * (temperature / 50);
+
+                if (this.x <= 0 || this.x >= width) this.vx *= -1;
+                if (this.y <= 0 || this.y >= height) this.vy *= -1;
+
+                // 반응 확률 계산 (R 차원 - 독립적 규칙)
+                let reacted = false;
+                if (this.type === 'A' && Math.random() < kf) {
+                    this.type = 'B';
+                    reacted = true;
+                } else if (this.type === 'B' && Math.random() < kr) {
+                    this.type = 'A';
+                    reacted = true;
+                }
+
+                if (reacted) {
+                    this.flashTimer = 15; // 반응 순간 반짝임 (I 차원 - 유효 충돌 시각화)
+                    this.setRandomVelocity();
+                }
+
+                if (this.flashTimer > 0) this.flashTimer--;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = this.type === 'A' ? '#ff4757' : '#1e90ff';
+                ctx.fill();
+
+                // 반응(상태 변화) 시 흰색 테두리 반짝임
+                if (this.flashTimer > 0) {
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${this.flashTimer / 15})`;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+
+                // 단일 입자 추적 하이라이트 (A 차원)
+                if (this.id === trackedIndex) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 12, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#ffcc00';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // 초기화
+        for (let i = 0; i < TOTAL_PARTICLES; i++) {
+            particles.push(new Particle(i));
+        }
+
+        // UI 이벤트 바인딩
+        document.getElementById('trackBtn').addEventListener('click', function() {
+            if (trackedIndex === -1) {
+                trackedIndex = Math.floor(Math.random() * TOTAL_PARTICLES);
+                this.innerText = '추적 끄기';
+                this.classList.add('active');
+            } else {
+                trackedIndex = -1;
+                this.innerText = '추적 켜기';
+                this.classList.remove('active');
+            }
+        });
+
+        document.getElementById('tempSlider').addEventListener('input', function() {
+            temperature = parseInt(this.value);
+            document.getElementById('tempValue').innerText = temperature;
+        });
+
+        // 메인 루프
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            // 흡열 반응 가정 (온도가 높을수록 정반응 속도 상수가 더 크게 증가)
+            const kf = 0.002 * Math.pow(temperature / 50, 2); 
+            const kr = 0.005 * (temperature / 50);
+
+            let countA = 0;
+            let countB = 0;
+
+            particles.forEach(p => {
+                p.update(kf, kr);
+                p.draw();
+                if (p.type === 'A') countA++;
+                else countB++;
+            });
+
+            // 매크로 상태 업데이트 (P 차원)
+            document.getElementById('countA').innerText = countA;
+            document.getElementById('countB').innerText = countB;
+            document.getElementById('barA').style.height = (countA / TOTAL_PARTICLES * 100) + '%';
+            document.getElementById('barB').style.height = (countB / TOTAL_PARTICLES * 100) + '%';
+
+            // 반응 속도 벡터 업데이트 (C 차원)
+            const rateForward = countA * kf;
+            const rateReverse = countB * kr;
+            const maxRate = TOTAL_PARTICLES * 0.015; // 정규화를 위한 임의 최대값
+            
+            document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
+            document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
