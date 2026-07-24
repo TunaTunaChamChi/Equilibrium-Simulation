@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>동적 화학 평형 시뮬레이션 (물리 엔진 적용)</title>
+    <title>동적 화학 평형 시뮬레이션 (통계역학 반영)</title>
     <style>
         body { font-family: 'Pretendard', sans-serif; background-color: #1e1e2f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         h1 { color: #00d2ff; }
-        .container { display: flex; gap: 20px; width: 100%; max-width: 1000px; flex-wrap: wrap; }
+        .container { display: flex; gap: 20px; width: 100%; max-width: 1050px; flex-wrap: wrap; }
         
-        .micro-view, .macro-view { background: #2a2a40; padding: 20px; border-radius: 10px; flex: 1; min-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .micro-view, .macro-view { background: #2a2a40; padding: 20px; border-radius: 10px; flex: 1; min-width: 450px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         canvas { background: #111; border-radius: 5px; width: 100%; height: 300px; border: 1px solid #444; }
         
         .controls { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
@@ -29,11 +29,13 @@
         }
         .macro-color-text { color: #222; font-weight: 900; font-size: 1.2em; text-shadow: 0px 0px 5px rgba(255,255,255,0.8); }
 
-        .qk-container { display: flex; gap: 15px; margin-top: 15px; }
-        .qk-box { flex: 1; background: #222233; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #444; }
-        .qk-title { font-size: 0.9em; color: #aaa; margin-bottom: 5px; }
-        .qk-value { font-size: 1.8em; font-weight: bold; font-family: monospace; transition: color 0.2s; }
-        .qk-relation { display: flex; align-items: center; justify-content: center; font-size: 1.5em; font-weight: bold; width: 40px; }
+        /* Q와 K 대시보드 확장 스타일 */
+        .qk-container { display: flex; gap: 10px; margin-top: 15px; }
+        .qk-box { flex: 1; background: #222233; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #444; }
+        .qk-box.dashed { border: 1px dashed #888; background: #1a1a24; }
+        .qk-title { font-size: 0.8em; color: #aaa; margin-bottom: 5px; line-height: 1.2; }
+        .qk-value { font-size: 1.5em; font-weight: bold; font-family: monospace; transition: color 0.2s; }
+        .qk-relation { display: flex; align-items: center; justify-content: center; font-size: 1.5em; font-weight: bold; width: 30px; }
 
         .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 15px; font-weight: bold; }
         .bar-wrapper { flex: 1; background: #444; height: 20px; border-radius: 10px; overflow: hidden; position: relative; }
@@ -49,7 +51,7 @@
 </head>
 <body>
 
-    <h1>화학 평형 (물리 엔진 적용 모델)</h1>
+    <h1>화학 평형</h1>
     
     <div class="container">
         <div class="micro-view">
@@ -58,11 +60,11 @@
             
             <div class="controls">
                 <div class="control-group">
-                    <label>단일 입자 추적 (A 차원)</label>
+                    <label>단일 입자 추적</label>
                     <button id="trackBtn">추적 켜기</button>
                 </div>
                 <div class="control-group">
-                    <label>온도 조절 (R 차원: 흡열 반응 가정)</label>
+                    <label>온도 조절 (흡열 반응 가정)</label>
                     <input type="range" id="tempSlider" min="20" max="100" value="50">
                     <span id="tempValue">50</span>
                 </div>
@@ -95,16 +97,21 @@
                 </tr>
             </table>
 
+            <!-- Q와 K 비교 대시보드 (순간 vs 평균 추가) -->
             <div class="qk-container">
+                <div class="qk-box dashed">
+                    <div class="qk-title">순간 반응 지수<br>(미시적 요동)</div>
+                    <div class="qk-value" id="valInstantQ" style="color: #888;">0.000</div>
+                </div>
                 <div class="qk-box">
-                    <div class="qk-title">반응 지수 ($Q = [B]/[A]$)</div>
-                    <div class="qk-value" id="valQ">0.000</div>
+                    <div class="qk-title">시간 평균 Q<br>(거시적 추세)</div>
+                    <div class="qk-value" id="valAvgQ">0.000</div>
                 </div>
                 <div class="qk-relation" id="qkRelation">
                     =
                 </div>
                 <div class="qk-box">
-                    <div class="qk-title">이론적 평형 상수 ($K$)</div>
+                    <div class="qk-title">이론 평형 상수<br>($K = e^{-\Delta H / T}$)</div>
                     <div class="qk-value" id="valK" style="color: #00d2ff;">0.000</div>
                 </div>
             </div>
@@ -153,8 +160,11 @@
         const E_AR = 120;  
         const DELTA_H = 100; 
         const STERIC_FACTOR = 0.05; 
-        
         const VISUAL_SCALE = 0.15; 
+
+        // 시간 평균 Q값을 구하기 위한 배열 (최근 180프레임 = 약 3초)
+        const Q_HISTORY_LENGTH = 180;
+        let qHistory = [];
 
         function randn_bm() {
             let u = 0, v = 0;
@@ -288,37 +298,56 @@
             document.getElementById('countATable').innerText = countA;
             document.getElementById('countBTable').innerText = countB;
 
-            // Q와 K 연산 및 UI 업데이트
+            // Q와 K 연산 및 큐(Queue) 업데이트
             const K = Math.exp(-DELTA_H / temperature);
-            const Q = countA === 0 ? Infinity : (countB / countA);
+            const instantQ = countA === 0 ? 999 : (countB / countA); // 무한대 방지를 위해 큰 값 처리
+            
+            // 순간 Q값을 히스토리에 저장 및 평균 도출
+            qHistory.push(instantQ);
+            if (qHistory.length > Q_HISTORY_LENGTH) {
+                qHistory.shift();
+            }
+            const avgQ = qHistory.reduce((a, b) => a + b, 0) / qHistory.length;
             
             document.getElementById('valK').innerText = K.toFixed(3);
             
-            const qEl = document.getElementById('valQ');
-            const relEl = document.getElementById('qkRelation');
-            const margin = K * 0.15; // 입자 수 요동으로 인한 미세 오차 허용 범위 (±15%)
-            
-            let thermoState = "eq"; // 열역학적 상태 (기본: 평형)
+            // 순간 Q 렌더링 (요동 시각화)
+            const instantQEl = document.getElementById('valInstantQ');
+            if (countA === 0) {
+                instantQEl.innerText = '∞';
+            } else {
+                instantQEl.innerText = instantQ.toFixed(3);
+                // 요동치는 모습을 직관적으로 보여주기 위해 순간 Q가 K보다 크면 푸른회색, 작으면 붉은색
+                instantQEl.style.color = instantQ > K ? '#a4b0be' : '#ff4757';
+            }
 
-            if (Q === Infinity) {
-                qEl.innerText = '∞';
-                qEl.style.color = '#fff';
+            // 평균 Q 렌더링 및 거시적 상태 판별 (안정성 시각화)
+            const avgQEl = document.getElementById('valAvgQ');
+            const relEl = document.getElementById('qkRelation');
+            const margin = K * 0.12; // 평균 오차 허용 범위 (±12%)
+            
+            let thermoState = "eq"; 
+
+            if (avgQ > 100) { // 거의 무한대일 경우
+                avgQEl.innerText = '∞';
+                avgQEl.style.color = '#fff';
                 thermoState = "reverse";
             } else {
-                qEl.innerText = Q.toFixed(3);
+                avgQEl.innerText = avgQ.toFixed(3);
                 
-                if (Q < K - margin) {
-                    qEl.style.color = '#ff4757'; 
+                // 거시적 평균 Q값을 기준으로 평형 상태 판별
+                if (avgQ < K - margin) {
+                    avgQEl.style.color = '#ff4757'; 
                     relEl.innerText = '<';
                     relEl.style.color = '#ff4757';
                     thermoState = "forward";
-                } else if (Q > K + margin) {
-                    qEl.style.color = '#a4b0be'; 
+                } else if (avgQ > K + margin) {
+                    avgQEl.style.color = '#a4b0be'; 
                     relEl.innerText = '>';
                     relEl.style.color = '#a4b0be';
                     thermoState = "reverse";
                 } else {
-                    qEl.style.color = '#ffcc00'; 
+                    avgQEl.style.color = '#ffcc00'; 
                     relEl.innerText = '≈';
                     relEl.style.color = '#ffcc00';
                     thermoState = "eq";
@@ -334,7 +363,7 @@
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(${rColor}, ${gbColor}, ${gbColor})`;
 
-            // 반응 속도 벡터 바(Arrow) 계산
+            // 반응 속도 벡터 바 계산
             const rateForward = activeA * STERIC_FACTOR;
             const rateReverse = activeB * STERIC_FACTOR;
             const maxRate = 1.0; 
@@ -345,9 +374,8 @@
             const netRate = rateForward - rateReverse;
             const sumBar = document.getElementById('vectorSumBar');
             
-            // 핵심 1: 시각적 화살표는 '현재 전체 속도'에 비례하는 동적 임계값을 사용하여 렌더링 (저온 반응 감지용)
             const totalRate = rateForward + rateReverse;
-            const dynamicMargin = Math.max(0.01, totalRate * 0.15); // 총 속도의 15% 이하거나 최소 0.01일 때만 요동 처리
+            const dynamicMargin = Math.max(0.01, totalRate * 0.15); 
             const widthPercent = Math.min((Math.abs(netRate) / maxRate) * 50, 50);
 
             if (netRate > dynamicMargin) {
@@ -365,14 +393,14 @@
                 sumBar.className = 'vector-sum-bar';
             }
 
-            // 핵심 2: 상태 텍스트 멘트는 오직 열역학적 지표(Q와 K 비교)에 의해서만 결정
+            // 거시적 평균 Q(thermoState)에 기반한 상태 텍스트
             const sumText = document.getElementById('vectorSumText');
             if (thermoState === "forward") {
                 sumText.innerHTML = '상태: <strong>정반응 (A → B)</strong> 진행 (비평형 상태)';
             } else if (thermoState === "reverse") {
                 sumText.innerHTML = '상태: <strong>역반응 (B → A)</strong> 진행 (비평형 상태)';
             } else {
-                sumText.innerHTML = '상태: 미세 요동 (<strong>동적 평형 유지 중</strong>)';
+                sumText.innerHTML = '상태: 거시적 변화 없음 (<strong>동적 평형 유지 중</strong>)';
             }
 
             requestAnimationFrame(animate);
