@@ -57,10 +57,6 @@
             <canvas id="simCanvas"></canvas>
             
             <div class="controls">
-                <div class="control-group">
-                    <label>단일 덩어리 추적</label>
-                    <button id="trackBtn">추적 켜기</button>
-                </div>
                 <div class="control-group" style="background: #2b3b4c;">
                     <label style="color: #2ed573; font-weight: bold;">촉매 투여 (정/역반응 $E_a$ 감소)</label>
                     <button id="catalystBtn" class="catalyst">촉매 넣기</button>
@@ -159,21 +155,18 @@
         const TOTAL_MOLECULES = TOTAL_PACKETS * MOLECULES_PER_PACKET;
 
         let particles = [];
-        let trackedIndex = -1;
         let temperature = 50; 
         let timeScale = 1.0;
         let catalystActive = false;
 
-        // K값을 현실화하기 위해 활성화 에너지 및 엔탈피 전면 재조정
         const BASE_E_AF = 160;  
         const BASE_E_AR = 100;  
         const DELTA_H = 60; 
         const CATALYST_EFFECT = 40; 
         
-        // 정반응과 역반응의 충돌 인자(Steric Factor)를 4:1로 설정하여 고온에서 B가 우세해지도록 함
         const STERIC_F = 0.08; 
         const STERIC_R = 0.02; 
-        const PRE_FACTOR = STERIC_F / STERIC_R; // = 4.0
+        const PRE_FACTOR = STERIC_F / STERIC_R; 
 
         const VISUAL_SCALE = 0.15; 
 
@@ -188,8 +181,7 @@
         }
 
         class PacketParticle {
-            constructor(id) {
-                this.id = id;
+            constructor() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
                 this.aCount = MOLECULES_PER_PACKET; 
@@ -234,7 +226,6 @@
                 this.aCount += reactB_to_A - reactA_to_B;
                 this.bCount += reactA_to_B - reactB_to_A;
 
-                // 에너지 흡수/방출에 의한 국소적 동결 방지를 위해 영향력 계수를 0.3으로 하향
                 let net_energy_change = (reactB_to_A * DELTA_H) - (reactA_to_B * DELTA_H);
                 if (net_energy_change !== 0) {
                     let new_ek = Math.max(ek + (net_energy_change / MOLECULES_PER_PACKET) * 0.3, 1); 
@@ -261,32 +252,12 @@
                     ctx.lineWidth = 3;
                     ctx.stroke();
                 }
-
-                if (this.id === trackedIndex) {
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, 12, 0, Math.PI * 2);
-                    ctx.strokeStyle = '#ffcc00';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
             }
         }
 
         for (let i = 0; i < TOTAL_PACKETS; i++) {
-            particles.push(new PacketParticle(i));
+            particles.push(new PacketParticle());
         }
-
-        document.getElementById('trackBtn').addEventListener('click', function() {
-            if (trackedIndex === -1) {
-                trackedIndex = Math.floor(Math.random() * TOTAL_PACKETS);
-                this.innerText = '추적 끄기';
-                this.classList.add('active');
-            } else {
-                trackedIndex = -1;
-                this.innerText = '추적 켜기';
-                this.classList.remove('active');
-            }
-        });
 
         document.getElementById('catalystBtn').addEventListener('click', function() {
             catalystActive = !catalystActive;
@@ -335,7 +306,6 @@
             document.getElementById('countATable').innerText = totalA;
             document.getElementById('countBTable').innerText = totalB;
 
-            // 수정된 이론 평형 상수 연산
             const K = PRE_FACTOR * Math.exp(-DELTA_H / temperature);
             const instantQ = totalA === 0 ? 999 : (totalB / totalA);
             
@@ -379,7 +349,7 @@
             }
 
             const concA = totalA / TOTAL_MOLECULES; 
-            const absorbance = 0.8 * concA; // 최대 흡광도를 높여 색 변화를 뚜렷하게
+            const absorbance = 0.8 * concA; 
             const transmittance = Math.pow(10, -absorbance); 
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(255, ${gbColor}, ${gbColor})`;
@@ -418,11 +388,12 @@
             
             if (chartData.length === 0) return;
 
-            const currentK = chartData[chartData.length-1].k;
-            const currentAvgQ = chartData[chartData.length-1].qAvg;
-            const maxY = Math.max(currentK * 1.5, currentAvgQ * 1.2, 0.5); 
+            // 핵심 수정: Y축 최대 스케일을 3.0으로 완전 고정
+            const maxY = 3.0; 
             
+            const currentK = chartData[chartData.length-1].k;
             const kY = chartCanvas.height - (currentK / maxY) * chartCanvas.height;
+            
             chartCtx.beginPath();
             chartCtx.moveTo(0, kY);
             chartCtx.lineTo(chartCanvas.width, kY);
@@ -432,7 +403,7 @@
             chartCtx.stroke();
             chartCtx.setLineDash([]); 
 
-            // 순간 Q 렌더링 (시각성 대폭 강화)
+            // 순간 Q 렌더링
             chartCtx.beginPath();
             chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
             chartCtx.lineWidth = 1.5;
