@@ -29,7 +29,6 @@
         }
         .macro-color-text { color: #222; font-weight: 900; font-size: 1.2em; text-shadow: 0px 0px 5px rgba(255,255,255,0.8); }
 
-        /* Q와 K 대시보드 확장 스타일 */
         .qk-container { display: flex; gap: 10px; margin-top: 15px; }
         .qk-box { flex: 1; background: #222233; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #444; }
         .qk-box.dashed { border: 1px dashed #888; background: #1a1a24; }
@@ -68,6 +67,12 @@
                     <input type="range" id="tempSlider" min="20" max="100" value="50">
                     <span id="tempValue">50</span>
                 </div>
+                <!-- 시간 스케일 조절 바 추가 -->
+                <div class="control-group">
+                    <label>시간 흐름 속도 (Time Scale)</label>
+                    <input type="range" id="timeSlider" min="0.1" max="3.0" step="0.1" value="1.0">
+                    <span id="timeValue">1.0x</span>
+                </div>
             </div>
             <p style="font-size: 0.85em; color: #aaa; margin-top: 10px; line-height: 1.4;">
                 * <strong>활성화 에너지 엔진:</strong> 입자의 실제 운동 에너지($E_k$)가 $E_a$를 넘을 때만 반응합니다.<br>
@@ -97,7 +102,6 @@
                 </tr>
             </table>
 
-            <!-- Q와 K 비교 대시보드 (순간 vs 평균 추가) -->
             <div class="qk-container">
                 <div class="qk-box dashed">
                     <div class="qk-title">순간 반응 지수<br>(미시적 요동)</div>
@@ -155,6 +159,9 @@
         let particles = [];
         let trackedIndex = -1;
         let temperature = 50; 
+        
+        // 시간 스케일 전역 변수
+        let timeScale = 1.0;
 
         const E_AF = 220;  
         const E_AR = 120;  
@@ -162,7 +169,6 @@
         const STERIC_FACTOR = 0.05; 
         const VISUAL_SCALE = 0.15; 
 
-        // 시간 평균 Q값을 구하기 위한 배열 (최근 180프레임 = 약 3초)
         const Q_HISTORY_LENGTH = 180;
         let qHistory = [];
 
@@ -190,21 +196,28 @@
             }
 
             update() {
-                this.x += this.vx;
-                this.y += this.vy;
+                // timeScale 배수만큼 이동 거리를 곱해 화면상 속도를 조절
+                this.x += this.vx * timeScale;
+                this.y += this.vy * timeScale;
 
-                if (this.x <= 0 || this.x >= width) this.vx *= -1;
-                if (this.y <= 0 || this.y >= height) this.vy *= -1;
+                // 배속이 높아졌을 때 캔버스를 탈출하지 않도록 물리적 충돌 경계를 엄격히 재설정
+                if (this.x <= 0) { this.x = 0; this.vx *= -1; }
+                if (this.x >= width) { this.x = width; this.vx *= -1; }
+                if (this.y <= 0) { this.y = 0; this.vy *= -1; }
+                if (this.y >= height) { this.y = height; this.vy *= -1; }
 
-                if (Math.random() < 0.02) {
+                // 열교환(온도조절기) 확률도 시간에 비례하여 연산
+                if (Math.random() < 0.02 * timeScale) {
                     this.thermalize();
                 }
 
+                // 물리적 운동에너지(E_k)는 timeScale에 영향을 받지 않고 본질적인 속도(vx, vy)로만 연산하여 고증 유지
                 let ek = 0.5 * (Math.pow(this.vx / VISUAL_SCALE, 2) + Math.pow(this.vy / VISUAL_SCALE, 2));
 
                 let reacted = false;
                 if (this.type === 'A' && ek > E_AF) {
-                    if (Math.random() < STERIC_FACTOR) {
+                    // 유효 충돌 발생 확률도 시간에 비례
+                    if (Math.random() < STERIC_FACTOR * timeScale) {
                         this.type = 'B';
                         let new_ek = Math.max(ek - DELTA_H, 1); 
                         let speedRatio = Math.sqrt(new_ek / ek);
@@ -213,7 +226,7 @@
                         reacted = true;
                     }
                 } else if (this.type === 'B' && ek > E_AR) {
-                    if (Math.random() < STERIC_FACTOR) {
+                    if (Math.random() < STERIC_FACTOR * timeScale) {
                         this.type = 'A';
                         let new_ek = ek + DELTA_H;
                         let speedRatio = Math.sqrt(new_ek / ek);
@@ -226,7 +239,12 @@
                 if (reacted) {
                     this.flashTimer = 40;
                 }
-                if (this.flashTimer > 0) this.flashTimer--;
+                
+                // 시각적 플래시 지속 시간도 시간 흐름에 맞춰 빠르게 소모되도록 처리
+                if (this.flashTimer > 0) {
+                    this.flashTimer -= timeScale;
+                    if(this.flashTimer < 0) this.flashTimer = 0;
+                }
             }
 
             draw() {
@@ -272,6 +290,12 @@
             document.getElementById('tempValue').innerText = temperature;
         });
 
+        // 타임 스케일 UI 이벤트 바인딩
+        document.getElementById('timeSlider').addEventListener('input', function() {
+            timeScale = parseFloat(this.value);
+            document.getElementById('timeValue').innerText = timeScale.toFixed(1) + 'x';
+        });
+
         function animate() {
             ctx.clearRect(0, 0, width, height);
 
@@ -298,11 +322,9 @@
             document.getElementById('countATable').innerText = countA;
             document.getElementById('countBTable').innerText = countB;
 
-            // Q와 K 연산 및 큐(Queue) 업데이트
             const K = Math.exp(-DELTA_H / temperature);
-            const instantQ = countA === 0 ? 999 : (countB / countA); // 무한대 방지를 위해 큰 값 처리
+            const instantQ = countA === 0 ? 999 : (countB / countA);
             
-            // 순간 Q값을 히스토리에 저장 및 평균 도출
             qHistory.push(instantQ);
             if (qHistory.length > Q_HISTORY_LENGTH) {
                 qHistory.shift();
@@ -311,31 +333,27 @@
             
             document.getElementById('valK').innerText = K.toFixed(3);
             
-            // 순간 Q 렌더링 (요동 시각화)
             const instantQEl = document.getElementById('valInstantQ');
             if (countA === 0) {
                 instantQEl.innerText = '∞';
             } else {
                 instantQEl.innerText = instantQ.toFixed(3);
-                // 요동치는 모습을 직관적으로 보여주기 위해 순간 Q가 K보다 크면 푸른회색, 작으면 붉은색
                 instantQEl.style.color = instantQ > K ? '#a4b0be' : '#ff4757';
             }
 
-            // 평균 Q 렌더링 및 거시적 상태 판별 (안정성 시각화)
             const avgQEl = document.getElementById('valAvgQ');
             const relEl = document.getElementById('qkRelation');
-            const margin = K * 0.12; // 평균 오차 허용 범위 (±12%)
+            const margin = K * 0.12; 
             
             let thermoState = "eq"; 
 
-            if (avgQ > 100) { // 거의 무한대일 경우
+            if (avgQ > 100) { 
                 avgQEl.innerText = '∞';
                 avgQEl.style.color = '#fff';
                 thermoState = "reverse";
             } else {
                 avgQEl.innerText = avgQ.toFixed(3);
                 
-                // 거시적 평균 Q값을 기준으로 평형 상태 판별
                 if (avgQ < K - margin) {
                     avgQEl.style.color = '#ff4757'; 
                     relEl.innerText = '<';
@@ -363,7 +381,7 @@
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(${rColor}, ${gbColor}, ${gbColor})`;
 
-            // 반응 속도 벡터 바 계산
+            // 벡터 바는 패스트포워드(timeScale)에 영향받지 않는 "본래의 물리적 반응 속도"를 시각화하도록 유지
             const rateForward = activeA * STERIC_FACTOR;
             const rateReverse = activeB * STERIC_FACTOR;
             const maxRate = 1.0; 
@@ -393,7 +411,6 @@
                 sumBar.className = 'vector-sum-bar';
             }
 
-            // 거시적 평균 Q(thermoState)에 기반한 상태 텍스트
             const sumText = document.getElementById('vectorSumText');
             if (thermoState === "forward") {
                 sumText.innerHTML = '상태: <strong>정반응 (A → B)</strong> 진행 (비평형 상태)';
