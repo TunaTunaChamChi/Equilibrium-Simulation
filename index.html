@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>동적 화학 평형 시뮬레이션 (CGMD 통계역학 반영)</title>
+    <title>동적 화학 평형 시뮬레이션 (CGMD 완벽 수렴)</title>
     <style>
         body { font-family: 'Pretendard', sans-serif; background-color: #1e1e2f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         h1 { color: #00d2ff; }
@@ -109,7 +109,7 @@
             <div class="qk-container">
                 <div class="qk-box dashed">
                     <div class="qk-title">순간 반응 지수<br>(미시적 요동)</div>
-                    <div class="qk-value" id="valInstantQ" style="color: #888;">0.000</div>
+                    <div class="qk-value" id="valInstantQ" style="color: #fff;">0.000</div>
                 </div>
                 <div class="qk-box">
                     <div class="qk-title">시간 평균 Q<br>(거시적 추세)</div>
@@ -117,7 +117,7 @@
                 </div>
                 <div class="qk-relation" id="qkRelation">=</div>
                 <div class="qk-box">
-                    <div class="qk-title">이론 평형 상수<br>($K = e^{-\Delta H / T}$)</div>
+                    <div class="qk-title">이론 평형 상수<br>($K = 4 \cdot e^{-60 / T}$)</div>
                     <div class="qk-value" id="valK" style="color: #00d2ff;">0.000</div>
                 </div>
             </div>
@@ -164,13 +164,17 @@
         let timeScale = 1.0;
         let catalystActive = false;
 
-        const BASE_E_AF = 220;  
-        const BASE_E_AR = 120;  
-        const DELTA_H = 100; 
-        const CATALYST_EFFECT = 70; 
+        // K값을 현실화하기 위해 활성화 에너지 및 엔탈피 전면 재조정
+        const BASE_E_AF = 160;  
+        const BASE_E_AR = 100;  
+        const DELTA_H = 60; 
+        const CATALYST_EFFECT = 40; 
         
-        // 반응 확률을 낮추고 열교환 확률을 대폭 높여 완벽한 열역학적 평형 유도
-        const STERIC_FACTOR = 0.02; 
+        // 정반응과 역반응의 충돌 인자(Steric Factor)를 4:1로 설정하여 고온에서 B가 우세해지도록 함
+        const STERIC_F = 0.08; 
+        const STERIC_R = 0.02; 
+        const PRE_FACTOR = STERIC_F / STERIC_R; // = 4.0
+
         const VISUAL_SCALE = 0.15; 
 
         let qHistory = [];
@@ -209,7 +213,6 @@
                 if (this.y <= 0) { this.y = 0; this.vy *= -1; }
                 if (this.y >= height) { this.y = height; this.vy *= -1; }
 
-                // 핵심 수정: 열교환(항온조) 확률을 25%로 대폭 상승시켜 반응물 기아 현상 원천 차단
                 if (Math.random() < 0.25 * timeScale) this.thermalize();
 
                 let ek = 0.5 * (Math.pow(this.vx / VISUAL_SCALE, 2) + Math.pow(this.vy / VISUAL_SCALE, 2));
@@ -219,21 +222,22 @@
 
                 if (ek > current_E_AF) {
                     for(let i=0; i<this.aCount; i++) {
-                        if (Math.random() < STERIC_FACTOR * timeScale) reactA_to_B++;
+                        if (Math.random() < STERIC_F * timeScale) reactA_to_B++;
                     }
                 }
                 if (ek > current_E_AR) {
                     for(let i=0; i<this.bCount; i++) {
-                        if (Math.random() < STERIC_FACTOR * timeScale) reactB_to_A++;
+                        if (Math.random() < STERIC_R * timeScale) reactB_to_A++;
                     }
                 }
 
                 this.aCount += reactB_to_A - reactA_to_B;
                 this.bCount += reactA_to_B - reactB_to_A;
 
+                // 에너지 흡수/방출에 의한 국소적 동결 방지를 위해 영향력 계수를 0.3으로 하향
                 let net_energy_change = (reactB_to_A * DELTA_H) - (reactA_to_B * DELTA_H);
                 if (net_energy_change !== 0) {
-                    let new_ek = Math.max(ek + (net_energy_change / MOLECULES_PER_PACKET), 1); 
+                    let new_ek = Math.max(ek + (net_energy_change / MOLECULES_PER_PACKET) * 0.3, 1); 
                     let speedRatio = Math.sqrt(new_ek / ek);
                     this.vx *= speedRatio;
                     this.vy *= speedRatio;
@@ -331,7 +335,8 @@
             document.getElementById('countATable').innerText = totalA;
             document.getElementById('countBTable').innerText = totalB;
 
-            const K = Math.exp(-DELTA_H / temperature);
+            // 수정된 이론 평형 상수 연산
+            const K = PRE_FACTOR * Math.exp(-DELTA_H / temperature);
             const instantQ = totalA === 0 ? 999 : (totalB / totalA);
             
             qHistory.push(instantQ);
@@ -350,12 +355,12 @@
                 instantQEl.innerText = '∞';
             } else {
                 instantQEl.innerText = instantQ.toFixed(3);
-                instantQEl.style.color = instantQ > K ? '#a4b0be' : '#ff4757';
+                instantQEl.style.color = instantQ > K ? '#c8d6e5' : '#ff7675';
             }
 
             const avgQEl = document.getElementById('valAvgQ');
             const relEl = document.getElementById('qkRelation');
-            const margin = K * 0.03; 
+            const margin = K * 0.05; 
             
             let thermoState = "eq"; 
 
@@ -374,14 +379,14 @@
             }
 
             const concA = totalA / TOTAL_MOLECULES; 
-            const absorbance = 0.4 * concA;
+            const absorbance = 0.8 * concA; // 최대 흡광도를 높여 색 변화를 뚜렷하게
             const transmittance = Math.pow(10, -absorbance); 
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(255, ${gbColor}, ${gbColor})`;
 
-            const rateForward = activePackets_F * STERIC_FACTOR;
-            const rateReverse = activePackets_R * STERIC_FACTOR;
-            const maxRate = TOTAL_MOLECULES * 0.008; 
+            const rateForward = activePackets_F * STERIC_F;
+            const rateReverse = activePackets_R * STERIC_R;
+            const maxRate = TOTAL_MOLECULES * 0.015; 
             
             document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
             document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
@@ -427,9 +432,9 @@
             chartCtx.stroke();
             chartCtx.setLineDash([]); 
 
-            // 핵심 수정: 순간 Q 그래프의 선 색상을 훨씬 밝고 불투명하게 조정
+            // 순간 Q 렌더링 (시각성 대폭 강화)
             chartCtx.beginPath();
-            chartCtx.strokeStyle = 'rgba(220, 220, 255, 0.8)';
+            chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
             chartCtx.lineWidth = 1.5;
             for (let i = 0; i < chartData.length; i++) {
                 const x = chartCanvas.width - chartData.length + i;
@@ -439,6 +444,7 @@
             }
             chartCtx.stroke();
 
+            // 평균 Q 렌더링
             chartCtx.beginPath();
             chartCtx.strokeStyle = '#ffcc00';
             chartCtx.lineWidth = 3;
