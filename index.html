@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>동적 화학 평형 시뮬레이션 (CGMD 완벽 수렴)</title>
+    <title>동적 화학 평형 시뮬레이션 (세부 균형 완벽 적용)</title>
     <style>
         body { font-family: 'Pretendard', sans-serif; background-color: #1e1e2f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         h1 { color: #00d2ff; }
@@ -73,7 +73,7 @@
                 </div>
             </div>
             <p style="font-size: 0.8em; color: #aaa; margin-top: 10px; line-height: 1.4;">
-                * <strong>거친 입자화(CGMD):</strong> 시각적 덩어리 1개는 내부적으로 100개의 분자를 품고 있으며 확률적으로 반응하여 거시적 요동을 극적으로 낮춥니다.<br>
+                * <strong>세부 균형(Detailed Balance) 유지:</strong> 열역학적 궤적의 오차를 없애기 위해 반응에 의한 인위적 속도 감속은 제거되었으며, 분자 반응은 <strong>섬광(Flash)</strong>으로만 표현됩니다.<br>
                 * 저온에서 평형 도달이 너무 느릴 때 <strong>촉매</strong>를 넣어보세요.
             </p>
         </div>
@@ -226,12 +226,9 @@
                 this.aCount += reactB_to_A - reactA_to_B;
                 this.bCount += reactA_to_B - reactB_to_A;
 
-                let net_energy_change = (reactB_to_A * DELTA_H) - (reactA_to_B * DELTA_H);
-                if (net_energy_change !== 0) {
-                    let new_ek = Math.max(ek + (net_energy_change / MOLECULES_PER_PACKET) * 0.3, 1); 
-                    let speedRatio = Math.sqrt(new_ek / ek);
-                    this.vx *= speedRatio;
-                    this.vy *= speedRatio;
+                // 물리적 완벽성을 위해 인위적인 에너지(속도) 삭감을 제거했습니다.
+                // 반응이 일어나면 시각적 플래시 효과만 부여합니다.
+                if (reactA_to_B > 0 || reactB_to_A > 0) {
                     this.flashTimer = 40;
                 }
 
@@ -330,7 +327,8 @@
 
             const avgQEl = document.getElementById('valAvgQ');
             const relEl = document.getElementById('qkRelation');
-            const margin = K * 0.05; 
+            // Q와 K가 수렴하므로 마진을 3%로 더 타이트하게 좁혀 정확성을 높임
+            const margin = K * 0.03; 
             
             let thermoState = "eq"; 
 
@@ -388,12 +386,14 @@
             
             if (chartData.length === 0) return;
 
-            // 핵심 수정: Y축 최대 스케일을 3.0으로 완전 고정
+            // Y축 최대 스케일을 3.0으로 완전 고정하여 
+            // K값이 온도 변화 외에는 움직이지 않는 절대적 상수로 보이게 함
             const maxY = 3.0; 
             
             const currentK = chartData[chartData.length-1].k;
             const kY = chartCanvas.height - (currentK / maxY) * chartCanvas.height;
             
+            // 이론적 평형 상수 K (고정점)
             chartCtx.beginPath();
             chartCtx.moveTo(0, kY);
             chartCtx.lineTo(chartCanvas.width, kY);
@@ -403,7 +403,7 @@
             chartCtx.stroke();
             chartCtx.setLineDash([]); 
 
-            // 순간 Q 렌더링
+            // 순간 반응 지수 Q (시각성 대폭 강화)
             chartCtx.beginPath();
             chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
             chartCtx.lineWidth = 1.5;
@@ -415,7 +415,7 @@
             }
             chartCtx.stroke();
 
-            // 평균 Q 렌더링
+            // 시간 평균 Q (수렴 추세)
             chartCtx.beginPath();
             chartCtx.strokeStyle = '#ffcc00';
             chartCtx.lineWidth = 3;
