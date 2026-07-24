@@ -3,30 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>동적 화학 평형 시뮬레이션 (통계역학 반영)</title>
+    <title>동적 화학 평형 시뮬레이션 (CGMD 통계역학 반영)</title>
     <style>
         body { font-family: 'Pretendard', sans-serif; background-color: #1e1e2f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         h1 { color: #00d2ff; }
         .container { display: flex; gap: 20px; width: 100%; max-width: 1050px; flex-wrap: wrap; }
         
         .micro-view, .macro-view { background: #2a2a40; padding: 20px; border-radius: 10px; flex: 1; min-width: 450px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        canvas { background: #111; border-radius: 5px; width: 100%; height: 300px; border: 1px solid #444; }
+        canvas { background: #111; border-radius: 5px; width: 100%; border: 1px solid #444; }
+        #simCanvas { height: 300px; }
+        #chartCanvas { height: 160px; margin-top: 15px; }
         
         .controls { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
         .control-group { display: flex; justify-content: space-between; align-items: center; background: #33334d; padding: 10px; border-radius: 5px; }
         button { background: #00d2ff; border: none; padding: 8px 15px; color: #000; font-weight: bold; border-radius: 5px; cursor: pointer; transition: 0.2s; }
         button:hover { background: #0099cc; }
         button.active { background: #ffcc00; color: #000; }
+        button.catalyst { background: #2ed573; color: #000; }
+        button.catalyst.active { background: #ff4757; color: #fff; }
         
         table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #33334d; border-radius: 5px; overflow: hidden; }
         th, td { padding: 12px; text-align: center; border: 1px solid #444; font-size: 1.1em; }
         th { background: #222233; color: #fff; }
         
-        .macro-color-box {
-            width: 100%; height: 120px; background-color: rgb(255, 255, 255);
-            border-radius: 8px; margin-bottom: 5px; display: flex; align-items: center; justify-content: center;
-            box-shadow: inset 0 0 15px rgba(0,0,0,0.2); transition: background-color 0.1s;
-        }
+        .macro-color-box { width: 100%; height: 100px; background-color: rgb(255, 255, 255); border-radius: 8px; margin-bottom: 5px; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 15px rgba(0,0,0,0.2); transition: background-color 0.1s; }
         .macro-color-text { color: #222; font-weight: 900; font-size: 1.2em; text-shadow: 0px 0px 5px rgba(255,255,255,0.8); }
 
         .qk-container { display: flex; gap: 10px; margin-top: 15px; }
@@ -37,53 +37,55 @@
         .qk-relation { display: flex; align-items: center; justify-content: center; font-size: 1.5em; font-weight: bold; width: 30px; }
 
         .vector-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 15px; font-weight: bold; }
-        .bar-wrapper { flex: 1; background: #444; height: 20px; border-radius: 10px; overflow: hidden; position: relative; }
+        .bar-wrapper { flex: 1; background: #444; height: 15px; border-radius: 10px; overflow: hidden; position: relative; }
         .bar-forward { background: #ff4757; height: 100%; width: 0%; float: left; transition: width 0.1s; }
         .bar-reverse { background: #a4b0be; height: 100%; width: 0%; float: right; transition: width 0.1s; }
         
-        .vector-sum-wrapper { flex: 1; height: 20px; background: #333; border-radius: 10px; position: relative; display: flex; max-width: calc(100% - 140px); margin: 0 auto; }
+        .vector-sum-wrapper { flex: 1; height: 15px; background: #333; border-radius: 10px; position: relative; display: flex; max-width: calc(100% - 140px); margin: 0 auto; }
         .vector-sum-bar { position: absolute; height: 100%; top: 0; transition: width 0.1s, left 0.1s; border-radius: 5px; }
-        
-        .vector-sum-bar.arrow-right::after { content: ""; position: absolute; right: -10px; top: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 10px solid #ff4757; }
-        .vector-sum-bar.arrow-left::before { content: ""; position: absolute; left: -10px; top: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-right: 10px solid #a4b0be; }
+        .vector-sum-bar.arrow-right::after { content: ""; position: absolute; right: -8px; top: -2px; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-left: 8px solid #ff4757; }
+        .vector-sum-bar.arrow-left::before { content: ""; position: absolute; left: -8px; top: -2px; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-right: 8px solid #a4b0be; }
     </style>
 </head>
 <body>
 
-    <h1>화학 평형</h1>
+    <h1>화학 평형 (1입자 = 100분자 CGMD 모델)</h1>
     
     <div class="container">
         <div class="micro-view">
-            <h3>미시적 입자 운동 (Maxwell-Boltzmann)</h3>
+            <h3>미시적 분자 덩어리 운동 (총 15,000분자 연산)</h3>
             <canvas id="simCanvas"></canvas>
             
             <div class="controls">
                 <div class="control-group">
-                    <label>단일 입자 추적</label>
+                    <label>단일 덩어리 추적</label>
                     <button id="trackBtn">추적 켜기</button>
+                </div>
+                <div class="control-group" style="background: #2b3b4c;">
+                    <label style="color: #2ed573; font-weight: bold;">촉매 투여 (정/역반응 $E_a$ 감소)</label>
+                    <button id="catalystBtn" class="catalyst">촉매 넣기</button>
                 </div>
                 <div class="control-group">
                     <label>온도 조절 (흡열 반응 가정)</label>
                     <input type="range" id="tempSlider" min="20" max="100" value="50">
                     <span id="tempValue">50</span>
                 </div>
-                <!-- 시간 스케일 조절 바 추가 -->
                 <div class="control-group">
                     <label>시간 흐름 속도 (Time Scale)</label>
                     <input type="range" id="timeSlider" min="0.1" max="3.0" step="0.1" value="1.0">
                     <span id="timeValue">1.0x</span>
                 </div>
             </div>
-            <p style="font-size: 0.85em; color: #aaa; margin-top: 10px; line-height: 1.4;">
-                * <strong>활성화 에너지 엔진:</strong> 입자의 실제 운동 에너지($E_k$)가 $E_a$를 넘을 때만 반응합니다.<br>
-                * 반응 시 주위의 열을 흡수(정반응)하거나 방출(역반응)하여 <strong>입자의 속도가 급격히 변합니다.</strong>
+            <p style="font-size: 0.8em; color: #aaa; margin-top: 10px; line-height: 1.4;">
+                * <strong>거친 입자화(CGMD):</strong> 시각적 덩어리 1개는 내부적으로 100개의 분자를 품고 있으며 확률적으로 반응하여 거시적 요동을 극적으로 낮춥니다.<br>
+                * 저온에서 평형 도달이 너무 느릴 때 <strong>촉매</strong>를 넣어보세요.
             </p>
         </div>
 
         <div class="macro-view">
-            <h3>거시적 상태 및 반응 속도 (Macroscopic)</h3>
+            <h3>거시적 상태, 실시간 그래프 및 속도</h3>
             
-            <div style="display:flex; flex-direction: column; align-items: center; margin-bottom: 15px;">
+            <div style="display:flex; flex-direction: column; align-items: center; margin-bottom: 5px;">
                 <div id="macroColorBox" class="macro-color-box">
                     <span class="macro-color-text">거시적 용액 색상</span>
                 </div>
@@ -96,11 +98,14 @@
                     <th style="width: 40%; color: #a4b0be;">생성물 B (투명)</th>
                 </tr>
                 <tr>
-                    <td style="font-weight: bold;">개수</td>
-                    <td id="countATable" style="font-weight: bold; color: #ff4757;">0</td>
+                    <td style="font-weight: bold;">총 분자 수</td>
+                    <td id="countATable" style="font-weight: bold; color: #ff4757;">15000</td>
                     <td id="countBTable" style="font-weight: bold; color: #a4b0be;">0</td>
                 </tr>
             </table>
+
+            <!-- 실시간 차트 캔버스 -->
+            <canvas id="chartCanvas"></canvas>
 
             <div class="qk-container">
                 <div class="qk-box dashed">
@@ -111,27 +116,19 @@
                     <div class="qk-title">시간 평균 Q<br>(거시적 추세)</div>
                     <div class="qk-value" id="valAvgQ">0.000</div>
                 </div>
-                <div class="qk-relation" id="qkRelation">
-                    =
-                </div>
+                <div class="qk-relation" id="qkRelation">=</div>
                 <div class="qk-box">
                     <div class="qk-title">이론 평형 상수<br>($K = e^{-\Delta H / T}$)</div>
                     <div class="qk-value" id="valK" style="color: #00d2ff;">0.000</div>
                 </div>
             </div>
 
-            <h4 style="margin-top:25px; margin-bottom: 5px;">실제 유효 충돌 반응 속도</h4>
-            
             <div class="vector-container">
-                <span style="width: 60px; text-align: right;">역반응</span>
-                <div class="bar-wrapper">
-                    <div id="vectorReverse" class="bar-reverse"></div>
-                </div>
-                <div style="width: 2px; height: 30px; background: #fff;"></div>
-                <div class="bar-wrapper">
-                    <div id="vectorForward" class="bar-forward"></div>
-                </div>
-                <span style="width: 60px;">정반응</span>
+                <span style="width: 60px; text-align: right; font-size: 0.9em;">역반응</span>
+                <div class="bar-wrapper"><div id="vectorReverse" class="bar-reverse"></div></div>
+                <div style="width: 2px; height: 20px; background: #fff;"></div>
+                <div class="bar-wrapper"><div id="vectorForward" class="bar-forward"></div></div>
+                <span style="width: 60px; font-size: 0.9em;">정반응</span>
             </div>
 
             <div class="vector-container" style="margin-top: 5px;">
@@ -143,9 +140,7 @@
                 <span style="width: 60px;"></span>
             </div>
             
-            <div id="vectorSumText" style="text-align:center; margin-top:8px; font-size:0.95em; color:#ddd;">
-                시스템 상태 확인 중...
-            </div>
+            <div id="vectorSumText" style="text-align:center; margin-top:8px; font-size:0.95em; color:#ddd;">시스템 상태 확인 중...</div>
         </div>
     </div>
 
@@ -155,22 +150,31 @@
         const width = canvas.width = canvas.offsetWidth;
         const height = canvas.height = canvas.offsetHeight;
 
-        const TOTAL_PARTICLES = 150;
+        const chartCanvas = document.getElementById('chartCanvas');
+        const chartCtx = chartCanvas.getContext('2d');
+        chartCanvas.width = chartCanvas.offsetWidth;
+        chartCanvas.height = chartCanvas.offsetHeight;
+
+        // CGMD 입자 설정 (150개의 시각적 덩어리, 각각 100개의 분자 포함)
+        const TOTAL_PACKETS = 150;
+        const MOLECULES_PER_PACKET = 100;
+        const TOTAL_MOLECULES = TOTAL_PACKETS * MOLECULES_PER_PACKET;
+
         let particles = [];
         let trackedIndex = -1;
         let temperature = 50; 
-        
-        // 시간 스케일 전역 변수
         let timeScale = 1.0;
+        let catalystActive = false;
 
-        const E_AF = 220;  
-        const E_AR = 120;  
+        const BASE_E_AF = 220;  
+        const BASE_E_AR = 120;  
         const DELTA_H = 100; 
+        const CATALYST_EFFECT = 70; // 촉매 투여 시 감소하는 활성화 에너지
         const STERIC_FACTOR = 0.05; 
         const VISUAL_SCALE = 0.15; 
 
-        const Q_HISTORY_LENGTH = 180;
         let qHistory = [];
+        let chartData = []; // 차트용 데이터 배열 (최대 캔버스 너비만큼 저장)
 
         function randn_bm() {
             let u = 0, v = 0;
@@ -179,12 +183,14 @@
             return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
         }
 
-        class Particle {
+        class PacketParticle {
             constructor(id) {
                 this.id = id;
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
-                this.type = 'A';
+                // 1덩어리 안에 100개의 분자가 A상태로 시작
+                this.aCount = MOLECULES_PER_PACKET; 
+                this.bCount = 0;
                 this.flashTimer = 0;
                 this.thermalize();
             }
@@ -195,52 +201,49 @@
                 this.vy = randn_bm() * speedScale;
             }
 
-            update() {
-                // timeScale 배수만큼 이동 거리를 곱해 화면상 속도를 조절
+            update(current_E_AF, current_E_AR) {
                 this.x += this.vx * timeScale;
                 this.y += this.vy * timeScale;
 
-                // 배속이 높아졌을 때 캔버스를 탈출하지 않도록 물리적 충돌 경계를 엄격히 재설정
                 if (this.x <= 0) { this.x = 0; this.vx *= -1; }
                 if (this.x >= width) { this.x = width; this.vx *= -1; }
                 if (this.y <= 0) { this.y = 0; this.vy *= -1; }
                 if (this.y >= height) { this.y = height; this.vy *= -1; }
 
-                // 열교환(온도조절기) 확률도 시간에 비례하여 연산
-                if (Math.random() < 0.02 * timeScale) {
-                    this.thermalize();
-                }
+                if (Math.random() < 0.02 * timeScale) this.thermalize();
 
-                // 물리적 운동에너지(E_k)는 timeScale에 영향을 받지 않고 본질적인 속도(vx, vy)로만 연산하여 고증 유지
                 let ek = 0.5 * (Math.pow(this.vx / VISUAL_SCALE, 2) + Math.pow(this.vy / VISUAL_SCALE, 2));
 
-                let reacted = false;
-                if (this.type === 'A' && ek > E_AF) {
-                    // 유효 충돌 발생 확률도 시간에 비례
-                    if (Math.random() < STERIC_FACTOR * timeScale) {
-                        this.type = 'B';
-                        let new_ek = Math.max(ek - DELTA_H, 1); 
-                        let speedRatio = Math.sqrt(new_ek / ek);
-                        this.vx *= speedRatio;
-                        this.vy *= speedRatio;
-                        reacted = true;
+                let reactA_to_B = 0;
+                let reactB_to_A = 0;
+
+                // 덩어리 내의 개별 분자 반응 연산 (확률적 접근)
+                if (ek > current_E_AF) {
+                    for(let i=0; i<this.aCount; i++) {
+                        if (Math.random() < STERIC_FACTOR * timeScale) reactA_to_B++;
                     }
-                } else if (this.type === 'B' && ek > E_AR) {
-                    if (Math.random() < STERIC_FACTOR * timeScale) {
-                        this.type = 'A';
-                        let new_ek = ek + DELTA_H;
-                        let speedRatio = Math.sqrt(new_ek / ek);
-                        this.vx *= speedRatio;
-                        this.vy *= speedRatio;
-                        reacted = true;
+                }
+                if (ek > current_E_AR) {
+                    for(let i=0; i<this.bCount; i++) {
+                        if (Math.random() < STERIC_FACTOR * timeScale) reactB_to_A++;
                     }
                 }
 
-                if (reacted) {
+                // 분자 개수 갱신
+                this.aCount += reactB_to_A - reactA_to_B;
+                this.bCount += reactA_to_B - reactB_to_A;
+
+                // 반응열(엔탈피)에 의한 덩어리 전체의 운동 에너지 변화
+                // 반응한 분자 개수만큼 에너지를 흡수/방출하여 덩어리 전체에 분배
+                let net_energy_change = (reactB_to_A * DELTA_H) - (reactA_to_B * DELTA_H);
+                if (net_energy_change !== 0) {
+                    let new_ek = Math.max(ek + (net_energy_change / MOLECULES_PER_PACKET), 1); 
+                    let speedRatio = Math.sqrt(new_ek / ek);
+                    this.vx *= speedRatio;
+                    this.vy *= speedRatio;
                     this.flashTimer = 40;
                 }
-                
-                // 시각적 플래시 지속 시간도 시간 흐름에 맞춰 빠르게 소모되도록 처리
+
                 if (this.flashTimer > 0) {
                     this.flashTimer -= timeScale;
                     if(this.flashTimer < 0) this.flashTimer = 0;
@@ -250,7 +253,8 @@
             draw() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 6, 0, Math.PI * 2);
-                ctx.fillStyle = this.type === 'A' ? '#ff4757' : '#a4b0be';
+                // 덩어리의 색상은 A와 B 중 더 많은 쪽을 따라감
+                ctx.fillStyle = this.aCount > this.bCount ? '#ff4757' : '#a4b0be';
                 ctx.fill();
 
                 if (this.flashTimer > 0) {
@@ -269,13 +273,14 @@
             }
         }
 
-        for (let i = 0; i < TOTAL_PARTICLES; i++) {
-            particles.push(new Particle(i));
+        for (let i = 0; i < TOTAL_PACKETS; i++) {
+            particles.push(new PacketParticle(i));
         }
 
+        // UI 이벤트 바인딩
         document.getElementById('trackBtn').addEventListener('click', function() {
             if (trackedIndex === -1) {
-                trackedIndex = Math.floor(Math.random() * TOTAL_PARTICLES);
+                trackedIndex = Math.floor(Math.random() * TOTAL_PACKETS);
                 this.innerText = '추적 끄기';
                 this.classList.add('active');
             } else {
@@ -285,12 +290,22 @@
             }
         });
 
+        document.getElementById('catalystBtn').addEventListener('click', function() {
+            catalystActive = !catalystActive;
+            if(catalystActive) {
+                this.innerText = '촉매 활성화 됨 (Ea 감소)';
+                this.classList.add('active');
+            } else {
+                this.innerText = '촉매 넣기';
+                this.classList.remove('active');
+            }
+        });
+
         document.getElementById('tempSlider').addEventListener('input', function() {
             temperature = parseInt(this.value);
             document.getElementById('tempValue').innerText = temperature;
         });
 
-        // 타임 스케일 UI 이벤트 바인딩
         document.getElementById('timeSlider').addEventListener('input', function() {
             timeScale = parseFloat(this.value);
             document.getElementById('timeValue').innerText = timeScale.toFixed(1) + 'x';
@@ -299,42 +314,48 @@
         function animate() {
             ctx.clearRect(0, 0, width, height);
 
-            let countA = 0;
-            let countB = 0;
-            let activeA = 0; 
-            let activeB = 0;
+            // 현재 촉매 상태에 따른 활성화 에너지 결정
+            const current_E_AF = catalystActive ? BASE_E_AF - CATALYST_EFFECT : BASE_E_AF;
+            const current_E_AR = catalystActive ? BASE_E_AR - CATALYST_EFFECT : BASE_E_AR;
+
+            let totalA = 0;
+            let totalB = 0;
+            let activePackets_F = 0; 
+            let activePackets_R = 0;
 
             particles.forEach(p => {
-                p.update();
+                p.update(current_E_AF, current_E_AR);
                 p.draw();
                 
-                if (p.type === 'A') {
-                    countA++;
-                    let ek = 0.5 * (Math.pow(p.vx / VISUAL_SCALE, 2) + Math.pow(p.vy / VISUAL_SCALE, 2));
-                    if(ek > E_AF) activeA++;
-                } else {
-                    countB++;
-                    let ek = 0.5 * (Math.pow(p.vx / VISUAL_SCALE, 2) + Math.pow(p.vy / VISUAL_SCALE, 2));
-                    if(ek > E_AR) activeB++;
-                }
+                totalA += p.aCount;
+                totalB += p.bCount;
+
+                let ek = 0.5 * (Math.pow(p.vx / VISUAL_SCALE, 2) + Math.pow(p.vy / VISUAL_SCALE, 2));
+                if(ek > current_E_AF) activePackets_F += p.aCount;
+                if(ek > current_E_AR) activePackets_R += p.bCount;
             });
 
-            document.getElementById('countATable').innerText = countA;
-            document.getElementById('countBTable').innerText = countB;
+            document.getElementById('countATable').innerText = totalA;
+            document.getElementById('countBTable').innerText = totalB;
 
             const K = Math.exp(-DELTA_H / temperature);
-            const instantQ = countA === 0 ? 999 : (countB / countA);
+            const instantQ = totalA === 0 ? 999 : (totalB / totalA);
             
             qHistory.push(instantQ);
-            if (qHistory.length > Q_HISTORY_LENGTH) {
-                qHistory.shift();
-            }
+            if (qHistory.length > 180) qHistory.shift();
             const avgQ = qHistory.reduce((a, b) => a + b, 0) / qHistory.length;
             
+            // 실시간 차트 데이터 기록
+            chartData.push({ qInst: instantQ, qAvg: avgQ, k: K });
+            if(chartData.length > chartCanvas.width) chartData.shift();
+
+            // 차트 렌더링
+            renderChart();
+
             document.getElementById('valK').innerText = K.toFixed(3);
             
             const instantQEl = document.getElementById('valInstantQ');
-            if (countA === 0) {
+            if (totalA === 0) {
                 instantQEl.innerText = '∞';
             } else {
                 instantQEl.innerText = instantQ.toFixed(3);
@@ -343,84 +364,113 @@
 
             const avgQEl = document.getElementById('valAvgQ');
             const relEl = document.getElementById('qkRelation');
-            const margin = K * 0.12; 
+            const margin = K * 0.05; // 분자수가 15000으로 늘었으므로 오차 허용범위를 5%로 타이트하게 조임
             
             let thermoState = "eq"; 
 
             if (avgQ > 100) { 
                 avgQEl.innerText = '∞';
-                avgQEl.style.color = '#fff';
                 thermoState = "reverse";
             } else {
                 avgQEl.innerText = avgQ.toFixed(3);
-                
                 if (avgQ < K - margin) {
-                    avgQEl.style.color = '#ff4757'; 
-                    relEl.innerText = '<';
-                    relEl.style.color = '#ff4757';
-                    thermoState = "forward";
+                    avgQEl.style.color = '#ff4757'; relEl.innerText = '<'; relEl.style.color = '#ff4757'; thermoState = "forward";
                 } else if (avgQ > K + margin) {
-                    avgQEl.style.color = '#a4b0be'; 
-                    relEl.innerText = '>';
-                    relEl.style.color = '#a4b0be';
-                    thermoState = "reverse";
+                    avgQEl.style.color = '#a4b0be'; relEl.innerText = '>'; relEl.style.color = '#a4b0be'; thermoState = "reverse";
                 } else {
-                    avgQEl.style.color = '#ffcc00'; 
-                    relEl.innerText = '≈';
-                    relEl.style.color = '#ffcc00';
-                    thermoState = "eq";
+                    avgQEl.style.color = '#ffcc00'; relEl.innerText = '≈'; relEl.style.color = '#ffcc00'; thermoState = "eq";
                 }
             }
 
-            const concA = countA / TOTAL_PARTICLES; 
-            const maxAbsorbance = 0.4; 
-            const absorbance = maxAbsorbance * concA;
+            // 거시적 색상 시각화 (A의 농도에 비례)
+            const concA = totalA / TOTAL_MOLECULES; 
+            const absorbance = 0.4 * concA;
             const transmittance = Math.pow(10, -absorbance); 
-            
-            const rColor = 255;
             const gbColor = Math.round(255 * transmittance);
-            document.getElementById('macroColorBox').style.backgroundColor = `rgb(${rColor}, ${gbColor}, ${gbColor})`;
+            document.getElementById('macroColorBox').style.backgroundColor = `rgb(255, ${gbColor}, ${gbColor})`;
 
-            // 벡터 바는 패스트포워드(timeScale)에 영향받지 않는 "본래의 물리적 반응 속도"를 시각화하도록 유지
-            const rateForward = activeA * STERIC_FACTOR;
-            const rateReverse = activeB * STERIC_FACTOR;
-            const maxRate = 1.0; 
+            // 반응 속도 벡터 계산 (15000 기준)
+            const rateForward = activePackets_F * STERIC_FACTOR;
+            const rateReverse = activePackets_R * STERIC_FACTOR;
+            const maxRate = TOTAL_MOLECULES * 0.02; 
             
             document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
             document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
 
             const netRate = rateForward - rateReverse;
             const sumBar = document.getElementById('vectorSumBar');
-            
             const totalRate = rateForward + rateReverse;
-            const dynamicMargin = Math.max(0.01, totalRate * 0.15); 
+            const dynamicMargin = Math.max(TOTAL_MOLECULES * 0.0001, totalRate * 0.1); 
             const widthPercent = Math.min((Math.abs(netRate) / maxRate) * 50, 50);
 
             if (netRate > dynamicMargin) {
-                sumBar.style.left = '50%';
-                sumBar.style.width = widthPercent + '%';
-                sumBar.style.backgroundColor = '#ff4757';
-                sumBar.className = 'vector-sum-bar arrow-right';
+                sumBar.style.left = '50%'; sumBar.style.width = widthPercent + '%'; sumBar.style.backgroundColor = '#ff4757'; sumBar.className = 'vector-sum-bar arrow-right';
             } else if (netRate < -dynamicMargin) {
-                sumBar.style.left = (50 - widthPercent) + '%';
-                sumBar.style.width = widthPercent + '%';
-                sumBar.style.backgroundColor = '#a4b0be';
-                sumBar.className = 'vector-sum-bar arrow-left';
+                sumBar.style.left = (50 - widthPercent) + '%'; sumBar.style.width = widthPercent + '%'; sumBar.style.backgroundColor = '#a4b0be'; sumBar.className = 'vector-sum-bar arrow-left';
             } else {
-                sumBar.style.width = '0%';
-                sumBar.className = 'vector-sum-bar';
+                sumBar.style.width = '0%'; sumBar.className = 'vector-sum-bar';
             }
 
             const sumText = document.getElementById('vectorSumText');
-            if (thermoState === "forward") {
-                sumText.innerHTML = '상태: <strong>정반응 (A → B)</strong> 진행 (비평형 상태)';
-            } else if (thermoState === "reverse") {
-                sumText.innerHTML = '상태: <strong>역반응 (B → A)</strong> 진행 (비평형 상태)';
-            } else {
-                sumText.innerHTML = '상태: 거시적 변화 없음 (<strong>동적 평형 유지 중</strong>)';
-            }
+            if (thermoState === "forward") sumText.innerHTML = '상태: <strong>정반응 (A → B)</strong> 우세 (비평형)';
+            else if (thermoState === "reverse") sumText.innerHTML = '상태: <strong>역반응 (B → A)</strong> 우세 (비평형)';
+            else sumText.innerHTML = '상태: 거시적 변화 없음 (<strong>동적 평형 유지 중</strong>)';
 
             requestAnimationFrame(animate);
+        }
+
+        // 실시간 차트 그리기 함수
+        function renderChart() {
+            chartCtx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+            
+            // 데이터가 없으면 패스
+            if (chartData.length === 0) return;
+
+            // Y축 스케일링 (최대 K값과 현재 Q값 중 큰 것을 기준으로 동적 스케일링)
+            const currentK = chartData[chartData.length-1].k;
+            const currentAvgQ = chartData[chartData.length-1].qAvg;
+            const maxY = Math.max(currentK * 1.5, currentAvgQ * 1.2, 0.5); 
+            
+            // K값 수평선 그리기 (청록색)
+            const kY = chartCanvas.height - (currentK / maxY) * chartCanvas.height;
+            chartCtx.beginPath();
+            chartCtx.moveTo(0, kY);
+            chartCtx.lineTo(chartCanvas.width, kY);
+            chartCtx.strokeStyle = 'rgba(0, 210, 255, 0.8)';
+            chartCtx.lineWidth = 2;
+            chartCtx.setLineDash([5, 5]); // 점선
+            chartCtx.stroke();
+            chartCtx.setLineDash([]); // 점선 초기화
+
+            // 순간 Q 그래프 그리기 (회색)
+            chartCtx.beginPath();
+            chartCtx.strokeStyle = 'rgba(136, 136, 136, 0.4)';
+            chartCtx.lineWidth = 1;
+            for (let i = 0; i < chartData.length; i++) {
+                const x = chartCanvas.width - chartData.length + i;
+                const y = chartCanvas.height - (Math.min(chartData[i].qInst, maxY) / maxY) * chartCanvas.height;
+                if (i === 0) chartCtx.moveTo(x, y);
+                else chartCtx.lineTo(x, y);
+            }
+            chartCtx.stroke();
+
+            // 시간 평균 Q 그래프 그리기 (흰색/노란색 굵은 선)
+            chartCtx.beginPath();
+            chartCtx.strokeStyle = '#ffcc00';
+            chartCtx.lineWidth = 3;
+            for (let i = 0; i < chartData.length; i++) {
+                const x = chartCanvas.width - chartData.length + i;
+                const y = chartCanvas.height - (Math.min(chartData[i].qAvg, maxY) / maxY) * chartCanvas.height;
+                if (i === 0) chartCtx.moveTo(x, y);
+                else chartCtx.lineTo(x, y);
+            }
+            chartCtx.stroke();
+            
+            // 차트 텍스트
+            chartCtx.fillStyle = '#aaa';
+            chartCtx.font = '10px sans-serif';
+            chartCtx.fillText("시간 (Time)", chartCanvas.width - 50, chartCanvas.height - 5);
+            chartCtx.fillText("값 (Q, K)", 5, 12);
         }
 
         animate();
