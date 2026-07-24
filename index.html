@@ -104,7 +104,6 @@
                 </tr>
             </table>
 
-            <!-- 실시간 차트 캔버스 -->
             <canvas id="chartCanvas"></canvas>
 
             <div class="qk-container">
@@ -155,7 +154,6 @@
         chartCanvas.width = chartCanvas.offsetWidth;
         chartCanvas.height = chartCanvas.offsetHeight;
 
-        // CGMD 입자 설정 (150개의 시각적 덩어리, 각각 100개의 분자 포함)
         const TOTAL_PACKETS = 150;
         const MOLECULES_PER_PACKET = 100;
         const TOTAL_MOLECULES = TOTAL_PACKETS * MOLECULES_PER_PACKET;
@@ -169,12 +167,14 @@
         const BASE_E_AF = 220;  
         const BASE_E_AR = 120;  
         const DELTA_H = 100; 
-        const CATALYST_EFFECT = 70; // 촉매 투여 시 감소하는 활성화 에너지
-        const STERIC_FACTOR = 0.05; 
+        const CATALYST_EFFECT = 70; 
+        
+        // 반응 확률을 낮추고 열교환 확률을 대폭 높여 완벽한 열역학적 평형 유도
+        const STERIC_FACTOR = 0.02; 
         const VISUAL_SCALE = 0.15; 
 
         let qHistory = [];
-        let chartData = []; // 차트용 데이터 배열 (최대 캔버스 너비만큼 저장)
+        let chartData = []; 
 
         function randn_bm() {
             let u = 0, v = 0;
@@ -188,7 +188,6 @@
                 this.id = id;
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
-                // 1덩어리 안에 100개의 분자가 A상태로 시작
                 this.aCount = MOLECULES_PER_PACKET; 
                 this.bCount = 0;
                 this.flashTimer = 0;
@@ -210,14 +209,14 @@
                 if (this.y <= 0) { this.y = 0; this.vy *= -1; }
                 if (this.y >= height) { this.y = height; this.vy *= -1; }
 
-                if (Math.random() < 0.02 * timeScale) this.thermalize();
+                // 핵심 수정: 열교환(항온조) 확률을 25%로 대폭 상승시켜 반응물 기아 현상 원천 차단
+                if (Math.random() < 0.25 * timeScale) this.thermalize();
 
                 let ek = 0.5 * (Math.pow(this.vx / VISUAL_SCALE, 2) + Math.pow(this.vy / VISUAL_SCALE, 2));
 
                 let reactA_to_B = 0;
                 let reactB_to_A = 0;
 
-                // 덩어리 내의 개별 분자 반응 연산 (확률적 접근)
                 if (ek > current_E_AF) {
                     for(let i=0; i<this.aCount; i++) {
                         if (Math.random() < STERIC_FACTOR * timeScale) reactA_to_B++;
@@ -229,12 +228,9 @@
                     }
                 }
 
-                // 분자 개수 갱신
                 this.aCount += reactB_to_A - reactA_to_B;
                 this.bCount += reactA_to_B - reactB_to_A;
 
-                // 반응열(엔탈피)에 의한 덩어리 전체의 운동 에너지 변화
-                // 반응한 분자 개수만큼 에너지를 흡수/방출하여 덩어리 전체에 분배
                 let net_energy_change = (reactB_to_A * DELTA_H) - (reactA_to_B * DELTA_H);
                 if (net_energy_change !== 0) {
                     let new_ek = Math.max(ek + (net_energy_change / MOLECULES_PER_PACKET), 1); 
@@ -253,7 +249,6 @@
             draw() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 6, 0, Math.PI * 2);
-                // 덩어리의 색상은 A와 B 중 더 많은 쪽을 따라감
                 ctx.fillStyle = this.aCount > this.bCount ? '#ff4757' : '#a4b0be';
                 ctx.fill();
 
@@ -277,7 +272,6 @@
             particles.push(new PacketParticle(i));
         }
 
-        // UI 이벤트 바인딩
         document.getElementById('trackBtn').addEventListener('click', function() {
             if (trackedIndex === -1) {
                 trackedIndex = Math.floor(Math.random() * TOTAL_PACKETS);
@@ -314,7 +308,6 @@
         function animate() {
             ctx.clearRect(0, 0, width, height);
 
-            // 현재 촉매 상태에 따른 활성화 에너지 결정
             const current_E_AF = catalystActive ? BASE_E_AF - CATALYST_EFFECT : BASE_E_AF;
             const current_E_AR = catalystActive ? BASE_E_AR - CATALYST_EFFECT : BASE_E_AR;
 
@@ -345,11 +338,9 @@
             if (qHistory.length > 180) qHistory.shift();
             const avgQ = qHistory.reduce((a, b) => a + b, 0) / qHistory.length;
             
-            // 실시간 차트 데이터 기록
             chartData.push({ qInst: instantQ, qAvg: avgQ, k: K });
             if(chartData.length > chartCanvas.width) chartData.shift();
 
-            // 차트 렌더링
             renderChart();
 
             document.getElementById('valK').innerText = K.toFixed(3);
@@ -364,7 +355,7 @@
 
             const avgQEl = document.getElementById('valAvgQ');
             const relEl = document.getElementById('qkRelation');
-            const margin = K * 0.05; // 분자수가 15000으로 늘었으므로 오차 허용범위를 5%로 타이트하게 조임
+            const margin = K * 0.03; 
             
             let thermoState = "eq"; 
 
@@ -382,17 +373,15 @@
                 }
             }
 
-            // 거시적 색상 시각화 (A의 농도에 비례)
             const concA = totalA / TOTAL_MOLECULES; 
             const absorbance = 0.4 * concA;
             const transmittance = Math.pow(10, -absorbance); 
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(255, ${gbColor}, ${gbColor})`;
 
-            // 반응 속도 벡터 계산 (15000 기준)
             const rateForward = activePackets_F * STERIC_FACTOR;
             const rateReverse = activePackets_R * STERIC_FACTOR;
-            const maxRate = TOTAL_MOLECULES * 0.02; 
+            const maxRate = TOTAL_MOLECULES * 0.008; 
             
             document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
             document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
@@ -419,33 +408,29 @@
             requestAnimationFrame(animate);
         }
 
-        // 실시간 차트 그리기 함수
         function renderChart() {
             chartCtx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
             
-            // 데이터가 없으면 패스
             if (chartData.length === 0) return;
 
-            // Y축 스케일링 (최대 K값과 현재 Q값 중 큰 것을 기준으로 동적 스케일링)
             const currentK = chartData[chartData.length-1].k;
             const currentAvgQ = chartData[chartData.length-1].qAvg;
             const maxY = Math.max(currentK * 1.5, currentAvgQ * 1.2, 0.5); 
             
-            // K값 수평선 그리기 (청록색)
             const kY = chartCanvas.height - (currentK / maxY) * chartCanvas.height;
             chartCtx.beginPath();
             chartCtx.moveTo(0, kY);
             chartCtx.lineTo(chartCanvas.width, kY);
             chartCtx.strokeStyle = 'rgba(0, 210, 255, 0.8)';
             chartCtx.lineWidth = 2;
-            chartCtx.setLineDash([5, 5]); // 점선
+            chartCtx.setLineDash([5, 5]); 
             chartCtx.stroke();
-            chartCtx.setLineDash([]); // 점선 초기화
+            chartCtx.setLineDash([]); 
 
-            // 순간 Q 그래프 그리기 (회색)
+            // 핵심 수정: 순간 Q 그래프의 선 색상을 훨씬 밝고 불투명하게 조정
             chartCtx.beginPath();
-            chartCtx.strokeStyle = 'rgba(136, 136, 136, 0.4)';
-            chartCtx.lineWidth = 1;
+            chartCtx.strokeStyle = 'rgba(220, 220, 255, 0.8)';
+            chartCtx.lineWidth = 1.5;
             for (let i = 0; i < chartData.length; i++) {
                 const x = chartCanvas.width - chartData.length + i;
                 const y = chartCanvas.height - (Math.min(chartData[i].qInst, maxY) / maxY) * chartCanvas.height;
@@ -454,7 +439,6 @@
             }
             chartCtx.stroke();
 
-            // 시간 평균 Q 그래프 그리기 (흰색/노란색 굵은 선)
             chartCtx.beginPath();
             chartCtx.strokeStyle = '#ffcc00';
             chartCtx.lineWidth = 3;
@@ -466,7 +450,6 @@
             }
             chartCtx.stroke();
             
-            // 차트 텍스트
             chartCtx.fillStyle = '#aaa';
             chartCtx.font = '10px sans-serif';
             chartCtx.fillText("시간 (Time)", chartCanvas.width - 50, chartCanvas.height - 5);
