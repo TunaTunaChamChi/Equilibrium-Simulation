@@ -216,7 +216,7 @@
             setSystemTemperature(temperature); // 정확한 평균 운동에너지 보정
         }
 
-        // 전체 시스템의 에너지를 스케일링하는 함수 (가상 열교환기 대신 사용자가 개입할 때 1회만 작동)
+        // 전체 시스템의 에너지를 스케일링하는 함수
         function setSystemTemperature(targetT) {
             let totalKE = 0;
             for(let p of particles) {
@@ -245,7 +245,6 @@
         document.getElementById('tempSlider').addEventListener('input', function() {
             temperature = parseInt(this.value);
             document.getElementById('tempValue').innerText = temperature;
-            setSystemTemperature(temperature); 
         });
 
         document.getElementById('timeSlider').addEventListener('input', function() {
@@ -274,15 +273,6 @@
                     if(p.y < p.radius) { p.y = p.radius; p.vy *= -1; }
                     if(p.y > height - p.radius) { p.y = height - p.radius; p.vy *= -1; }
                 }
-// 엔진의 수치적 오차(Drift)로 인해 발생하는 
-// 총 운동 에너지의 변화를 매 프레임 원래 목표 온도(temperature)로 스케일링하여 
-// '완벽한 고립계의 에너지 보존'을 강제 구현합니다.
-setSystemTemperature(temperature); 
-
-let countA = 0;
-let countB = 0;                
-
-
                 
                 // 2. 입자 간 완전 탄성 충돌 & 2A ⇌ 2B 화학 반응 연산
                 for(let i=0; i<particles.length; i++) {
@@ -330,7 +320,7 @@ let countB = 0;
                             p2.vx += v_rel_n * nx;
                             p2.vy += v_rel_n * ny;
                             
-                            // 입자 겹침 방지 보정
+                            // 입자 겹침 방지 보정 (Numerical Drift의 주원인)
                             let overlap = minDist - dist;
                             p1.x -= nx * overlap / 2;
                             p1.y -= ny * overlap / 2;
@@ -340,6 +330,10 @@ let countB = 0;
                     }
                 }
             }
+
+            // 엔진의 수치적 오차(Drift)로 인해 발생하는 총 운동 에너지의 변화를 
+            // 매 프레임 목표 온도(temperature)로 스케일링하여 강제로 보정합니다.
+            setSystemTemperature(temperature); 
 
             let countA = 0;
             let countB = 0;
