@@ -274,6 +274,15 @@
                     if(p.y < p.radius) { p.y = p.radius; p.vy *= -1; }
                     if(p.y > height - p.radius) { p.y = height - p.radius; p.vy *= -1; }
                 }
+// 엔진의 수치적 오차(Drift)로 인해 발생하는 
+// 총 운동 에너지의 변화를 매 프레임 원래 목표 온도(temperature)로 스케일링하여 
+// '완벽한 고립계의 에너지 보존'을 강제 구현합니다.
+setSystemTemperature(temperature); 
+
+let countA = 0;
+let countB = 0;                
+
+
                 
                 // 2. 입자 간 완전 탄성 충돌 & 2A ⇌ 2B 화학 반응 연산
                 for(let i=0; i<particles.length; i++) {
