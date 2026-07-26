@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>동적 화학 평형 시뮬레이션 (세부 균형 완벽 적용)</title>
+    <title>동적 화학 평형 시뮬레이션 (2A ⇌ 2B 단일 입자 모델)</title>
     <style>
         body { font-family: 'Pretendard', sans-serif; background-color: #1e1e2f; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         h1 { color: #00d2ff; }
@@ -49,11 +49,11 @@
 </head>
 <body>
 
-    <h1>화학 평형 (1입자 = 100분자 CGMD 모델)</h1>
+    <h1>화학 평형 (단일 입자 모델, 2A ⇌ 2B)</h1>
     
     <div class="container">
         <div class="micro-view">
-            <h3>미시적 분자 덩어리 운동 (총 15,000분자 연산)</h3>
+            <h3>미시적 분자 충돌 운동 (총 400분자 연산)</h3>
             <canvas id="simCanvas"></canvas>
             
             <div class="controls">
@@ -62,19 +62,20 @@
                     <button id="catalystBtn" class="catalyst">촉매 넣기</button>
                 </div>
                 <div class="control-group">
-                    <label>온도 조절 (흡열 반응 가정)</label>
+                    <label>계의 온도 (초기 시스템 에너지)</label>
                     <input type="range" id="tempSlider" min="20" max="100" value="50">
                     <span id="tempValue">50</span>
                 </div>
                 <div class="control-group">
                     <label>시간 흐름 속도 (Time Scale)</label>
-                    <input type="range" id="timeSlider" min="0.1" max="3.0" step="0.1" value="1.0">
+                    <input type="range" id="timeSlider" min="0.1" max="2.0" step="0.1" value="1.0">
                     <span id="timeValue">1.0x</span>
                 </div>
             </div>
             <p style="font-size: 0.8em; color: #aaa; margin-top: 10px; line-height: 1.4;">
-                * <strong>세부 균형(Detailed Balance) 유지:</strong> 열역학적 궤적의 오차를 없애기 위해 반응에 의한 인위적 속도 감속은 제거되었으며, 분자 반응은 <strong>섬광(Flash)</strong>으로만 표현됩니다.<br>
-                * 저온에서 평형 도달이 너무 느릴 때 <strong>촉매</strong>를 넣어보세요.
+                * <strong>단일 입자 모델 & 세부 균형:</strong> 가상의 열 교환기를 제거하고 완전 탄성 충돌을 통해 평형에 도달합니다.<br>
+                * <strong>온도 변화 무시:</strong> 반응열(ΔH)에 의한 입자들의 운동 에너지 변화를 무시하므로, 계의 온도는 일정하게 유지됩니다.<br>
+                * 입자 충돌 이론에 따라 <strong>2A ⇌ 2B</strong> 반응이 일어납니다. 저온에서 평형 도달이 느릴 땐 <strong>촉매</strong>를 사용하세요.
             </p>
         </div>
 
@@ -95,7 +96,7 @@
                 </tr>
                 <tr>
                     <td style="font-weight: bold;">총 분자 수</td>
-                    <td id="countATable" style="font-weight: bold; color: #ff4757;">15000</td>
+                    <td id="countATable" style="font-weight: bold; color: #ff4757;">400</td>
                     <td id="countBTable" style="font-weight: bold; color: #a4b0be;">0</td>
                 </tr>
             </table>
@@ -104,7 +105,7 @@
 
             <div class="qk-container">
                 <div class="qk-box dashed">
-                    <div class="qk-title">순간 반응 지수<br>(미시적 요동)</div>
+                    <div class="qk-title">순간 반응 지수<br>($Q = [B]^2 / [A]^2$)</div>
                     <div class="qk-value" id="valInstantQ" style="color: #fff;">0.000</div>
                 </div>
                 <div class="qk-box">
@@ -150,13 +151,11 @@
         chartCanvas.width = chartCanvas.offsetWidth;
         chartCanvas.height = chartCanvas.offsetHeight;
 
-        const TOTAL_PACKETS = 150;
-        const MOLECULES_PER_PACKET = 50;
-        const TOTAL_MOLECULES = TOTAL_PACKETS * MOLECULES_PER_PACKET;
-
+        const TOTAL_MOLECULES = 400; // 개별 입자 개수
         let particles = [];
+        
         let temperature = 50; 
-        let timeScale = 4.0;
+        let timeScale = 1.0;
         let catalystActive = false;
 
         const BASE_E_AF = 160;  
@@ -164,96 +163,72 @@
         const DELTA_H = 60; 
         const CATALYST_EFFECT = 40; 
         
-        const STERIC_F = 0.022; 
-        const STERIC_R = 0.0055; 
-        const PRE_FACTOR = STERIC_F / STERIC_R; 
-
-        const VISUAL_SCALE = 0.15; 
+        const STERIC_F = 1.0; 
+        const STERIC_R = 0.25; 
+        const PRE_FACTOR = STERIC_F / STERIC_R; // 이론적 K의 지수 앞 상수 = 4
 
         let qHistory = [];
         let chartData = []; 
 
-        function randn_bm() {
-            let u = 0, v = 0;
-            while(u === 0) u = Math.random();
-            while(v === 0) v = Math.random();
-            return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-        }
-
-        class PacketParticle {
-            constructor() {
-                this.x = Math.random() * width;
-                this.y = Math.random() * height;
-                this.aCount = MOLECULES_PER_PACKET; 
-                this.bCount = 0;
+        class Particle {
+            constructor(x, y, vx, vy) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.type = 'A'; // Start as Reactant
+                this.radius = 4; // 충돌 반경
                 this.flashTimer = 0;
-                this.thermalize();
-            }
-
-            thermalize() {
-                const speedScale = Math.sqrt(temperature) * VISUAL_SCALE; 
-                this.vx = randn_bm() * speedScale;
-                this.vy = randn_bm() * speedScale;
-            }
-
-            update(current_E_AF, current_E_AR) {
-                this.x += this.vx * timeScale;
-                this.y += this.vy * timeScale;
-
-                if (this.x <= 0) { this.x = 0; this.vx *= -1; }
-                if (this.x >= width) { this.x = width; this.vx *= -1; }
-                if (this.y <= 0) { this.y = 0; this.vy *= -1; }
-                if (this.y >= height) { this.y = height; this.vy *= -1; }
-
-                if (Math.random() < 0.25 * timeScale) this.thermalize();
-
-                let ek = 0.5 * (Math.pow(this.vx / VISUAL_SCALE, 2) + Math.pow(this.vy / VISUAL_SCALE, 2));
-
-                let reactA_to_B = 0;
-                let reactB_to_A = 0;
-
-                if (ek > current_E_AF) {
-                    for(let i=0; i<this.aCount; i++) {
-                        if (Math.random() < STERIC_F * timeScale) reactA_to_B++;
-                    }
-                }
-                if (ek > current_E_AR) {
-                    for(let i=0; i<this.bCount; i++) {
-                        if (Math.random() < STERIC_R * timeScale) reactB_to_A++;
-                    }
-                }
-
-                this.aCount += reactB_to_A - reactA_to_B;
-                this.bCount += reactA_to_B - reactB_to_A;
-
-                // 물리적 완벽성을 위해 인위적인 에너지(속도) 삭감을 제거했습니다.
-                // 반응이 일어나면 시각적 플래시 효과만 부여합니다.
-                if (reactA_to_B > 0 || reactB_to_A > 0) {
-                    this.flashTimer = 40;
-                }
-
-                if (this.flashTimer > 0) {
-                    this.flashTimer -= timeScale;
-                    if(this.flashTimer < 0) this.flashTimer = 0;
-                }
             }
 
             draw() {
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, 6, 0, Math.PI * 2);
-                ctx.fillStyle = this.aCount > this.bCount ? '#ff4757' : '#a4b0be';
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.type === 'A' ? '#ff4757' : '#a4b0be';
                 ctx.fill();
 
                 if (this.flashTimer > 0) {
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${this.flashTimer / 40})`;
-                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${this.flashTimer / 20})`;
+                    ctx.lineWidth = 2;
                     ctx.stroke();
+                    this.flashTimer -= 1;
                 }
             }
         }
 
-        for (let i = 0; i < TOTAL_PACKETS; i++) {
-            particles.push(new PacketParticle());
+        // 초기 입자 생성 및 온도(평균 운동 에너지) 세팅
+        function initSystem() {
+            particles = [];
+            for (let i = 0; i < TOTAL_MOLECULES; i++) {
+                let x = 10 + Math.random() * (width - 20);
+                let y = 10 + Math.random() * (height - 20);
+                
+                // Box-Muller 변환으로 2D 정규분포 속도 부여
+                let u1 = Math.random(), u2 = Math.random();
+                let z0 = Math.sqrt(-2.0 * Math.log(u1 + 1e-9)) * Math.cos(2.0 * Math.PI * u2);
+                let z1 = Math.sqrt(-2.0 * Math.log(u1 + 1e-9)) * Math.sin(2.0 * Math.PI * u2);
+                
+                let vx = z0 * Math.sqrt(temperature);
+                let vy = z1 * Math.sqrt(temperature);
+                
+                particles.push(new Particle(x, y, vx, vy));
+            }
+            setSystemTemperature(temperature); // 정확한 평균 운동에너지 보정
+        }
+
+        // 전체 시스템의 에너지를 스케일링하는 함수 (가상 열교환기 대신 사용자가 개입할 때 1회만 작동)
+        function setSystemTemperature(targetT) {
+            let totalKE = 0;
+            for(let p of particles) {
+                totalKE += 0.5 * (p.vx*p.vx + p.vy*p.vy);
+            }
+            let currentT = totalKE / particles.length;
+            if (currentT < 0.001) currentT = 0.001; 
+            let scale = Math.sqrt(targetT / currentT);
+            for(let p of particles) {
+                p.vx *= scale;
+                p.vy *= scale;
+            }
         }
 
         document.getElementById('catalystBtn').addEventListener('click', function() {
@@ -270,6 +245,7 @@
         document.getElementById('tempSlider').addEventListener('input', function() {
             temperature = parseInt(this.value);
             document.getElementById('tempValue').innerText = temperature;
+            setSystemTemperature(temperature); 
         });
 
         document.getElementById('timeSlider').addEventListener('input', function() {
@@ -283,28 +259,93 @@
             const current_E_AF = catalystActive ? BASE_E_AF - CATALYST_EFFECT : BASE_E_AF;
             const current_E_AR = catalystActive ? BASE_E_AR - CATALYST_EFFECT : BASE_E_AR;
 
-            let totalA = 0;
-            let totalB = 0;
-            let activePackets_F = 0; 
-            let activePackets_R = 0;
+            // 안정적인 충돌 계산을 위한 서브스텝 (Substepping)
+            let numSubsteps = Math.max(1, Math.ceil(timeScale * 2));
+            let dt = timeScale / numSubsteps;
 
-            particles.forEach(p => {
-                p.update(current_E_AF, current_E_AR);
-                p.draw();
+            for(let step = 0; step < numSubsteps; step++) {
+                // 1. 위치 이동 및 벽면 충돌
+                for(let p of particles) {
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+
+                    if(p.x < p.radius) { p.x = p.radius; p.vx *= -1; }
+                    if(p.x > width - p.radius) { p.x = width - p.radius; p.vx *= -1; }
+                    if(p.y < p.radius) { p.y = p.radius; p.vy *= -1; }
+                    if(p.y > height - p.radius) { p.y = height - p.radius; p.vy *= -1; }
+                }
                 
-                totalA += p.aCount;
-                totalB += p.bCount;
+                // 2. 입자 간 완전 탄성 충돌 & 2A ⇌ 2B 화학 반응 연산
+                for(let i=0; i<particles.length; i++) {
+                    let p1 = particles[i];
+                    for(let j=i+1; j<particles.length; j++) {
+                        let p2 = particles[j];
+                        
+                        let dx = p2.x - p1.x;
+                        let dy = p2.y - p1.y;
+                        let distSq = dx*dx + dy*dy;
+                        let minDist = p1.radius + p2.radius;
+                        
+                        if(distSq < minDist*minDist) {
+                            let dist = Math.sqrt(distSq);
+                            if(dist === 0) continue;
+                            
+                            let nx = dx / dist;
+                            let ny = dy / dist;
+                            
+                            let dvx = p1.vx - p2.vx;
+                            let dvy = p1.vy - p2.vy;
+                            let v_rel_n = dvx*nx + dvy*ny;
+                            
+                            if(v_rel_n < 0) continue; // 서로 멀어지는 중이면 충돌 무시
+                            
+                            // 충돌 중심 운동 에너지 (E = 1/4 * v_rel^2)
+                            let e_col = 0.25 * v_rel_n * v_rel_n;
+                            
+                            // 화학 반응 조건 평가
+                            if(p1.type === 'A' && p2.type === 'A') {
+                                if(e_col > current_E_AF && Math.random() < STERIC_F) {
+                                    p1.type = 'B'; p2.type = 'B'; // 2A -> 2B
+                                    p1.flashTimer = 20; p2.flashTimer = 20;
+                                }
+                            } else if (p1.type === 'B' && p2.type === 'B') {
+                                if(e_col > current_E_AR && Math.random() < STERIC_R) {
+                                    p1.type = 'A'; p2.type = 'A'; // 2B -> 2A
+                                    p1.flashTimer = 20; p2.flashTimer = 20;
+                                }
+                            }
 
-                let ek = 0.5 * (Math.pow(p.vx / VISUAL_SCALE, 2) + Math.pow(p.vy / VISUAL_SCALE, 2));
-                if(ek > current_E_AF) activePackets_F += p.aCount;
-                if(ek > current_E_AR) activePackets_R += p.bCount;
+                            // 반응 유무와 관계없이 완전 탄성 충돌 수행 (운동 에너지 완벽 보존)
+                            p1.vx -= v_rel_n * nx;
+                            p1.vy -= v_rel_n * ny;
+                            p2.vx += v_rel_n * nx;
+                            p2.vy += v_rel_n * ny;
+                            
+                            // 입자 겹침 방지 보정
+                            let overlap = minDist - dist;
+                            p1.x -= nx * overlap / 2;
+                            p1.y -= ny * overlap / 2;
+                            p2.x += nx * overlap / 2;
+                            p2.y += ny * overlap / 2;
+                        }
+                    }
+                }
+            }
+
+            let countA = 0;
+            let countB = 0;
+            particles.forEach(p => {
+                p.draw();
+                if(p.type === 'A') countA++;
+                else countB++;
             });
 
-            document.getElementById('countATable').innerText = totalA;
-            document.getElementById('countBTable').innerText = totalB;
+            document.getElementById('countATable').innerText = countA;
+            document.getElementById('countBTable').innerText = countB;
 
+            // Q = [B]^2 / [A]^2 계산
+            const instantQ = countA === 0 ? 9999 : (countB * countB) / (countA * countA);
             const K = PRE_FACTOR * Math.exp(-DELTA_H / temperature);
-            const instantQ = totalA === 0 ? 999 : (totalB / totalA);
             
             qHistory.push(instantQ);
             if (qHistory.length > 180) qHistory.shift();
@@ -318,7 +359,7 @@
             document.getElementById('valK').innerText = K.toFixed(3);
             
             const instantQEl = document.getElementById('valInstantQ');
-            if (totalA === 0) {
+            if (countA === 0) {
                 instantQEl.innerText = '∞';
             } else {
                 instantQEl.innerText = instantQ.toFixed(3);
@@ -327,8 +368,7 @@
 
             const avgQEl = document.getElementById('valAvgQ');
             const relEl = document.getElementById('qkRelation');
-            // Q와 K가 수렴하므로 마진을 3%로 더 타이트하게 좁혀 정확성을 높임
-            const margin = K * 0.03; 
+            const margin = K * 0.05; 
             
             let thermoState = "eq"; 
 
@@ -346,24 +386,28 @@
                 }
             }
 
-            const concA = totalA / TOTAL_MOLECULES; 
+            // 용액 색상 (A 농도에 비례)
+            const concA = countA / TOTAL_MOLECULES; 
             const absorbance = 0.8 * concA; 
             const transmittance = Math.pow(10, -absorbance); 
             const gbColor = Math.round(255 * transmittance);
             document.getElementById('macroColorBox').style.backgroundColor = `rgb(255, ${gbColor}, ${gbColor})`;
 
-            const rateForward = activePackets_F * STERIC_F;
-            const rateReverse = activePackets_R * STERIC_R;
-            const maxRate = TOTAL_MOLECULES * 0.015; 
+            // 통계 역학적 충돌 확률에 따른 이론 속도 산출 (UI 부드러움 향상)
+            const rateForward = countA * countA * STERIC_F * Math.exp(-current_E_AF / temperature);
+            const rateReverse = countB * countB * STERIC_R * Math.exp(-current_E_AR / temperature);
             
-            document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRate) * 100, 100) + '%';
-            document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRate) * 100, 100) + '%';
+            // UI를 위한 Max 스케일 기준점 설정 (모두 A일 때 가장 빠른 반응 기준)
+            const maxRateUi = TOTAL_MOLECULES * TOTAL_MOLECULES * 0.35; 
+            
+            document.getElementById('vectorForward').style.width = Math.min((rateForward / maxRateUi) * 100, 100) + '%';
+            document.getElementById('vectorReverse').style.width = Math.min((rateReverse / maxRateUi) * 100, 100) + '%';
 
             const netRate = rateForward - rateReverse;
             const sumBar = document.getElementById('vectorSumBar');
             const totalRate = rateForward + rateReverse;
-            const dynamicMargin = Math.max(TOTAL_MOLECULES * 0.0001, totalRate * 0.1); 
-            const widthPercent = Math.min((Math.abs(netRate) / maxRate) * 50, 50);
+            const dynamicMargin = Math.max(maxRateUi * 0.01, totalRate * 0.05); 
+            const widthPercent = Math.min((Math.abs(netRate) / maxRateUi) * 50, 50);
 
             if (netRate > dynamicMargin) {
                 sumBar.style.left = '50%'; sumBar.style.width = widthPercent + '%'; sumBar.style.backgroundColor = '#ff4757'; sumBar.className = 'vector-sum-bar arrow-right';
@@ -374,8 +418,8 @@
             }
 
             const sumText = document.getElementById('vectorSumText');
-            if (thermoState === "forward") sumText.innerHTML = '상태: <strong>정반응 (A → B)</strong> 우세 (비평형)';
-            else if (thermoState === "reverse") sumText.innerHTML = '상태: <strong>역반응 (B → A)</strong> 우세 (비평형)';
+            if (thermoState === "forward") sumText.innerHTML = '상태: <strong>정반응 (2A → 2B)</strong> 우세 (비평형)';
+            else if (thermoState === "reverse") sumText.innerHTML = '상태: <strong>역반응 (2B → 2A)</strong> 우세 (비평형)';
             else sumText.innerHTML = '상태: 거시적 변화 없음 (<strong>동적 평형 유지 중</strong>)';
 
             requestAnimationFrame(animate);
@@ -383,17 +427,13 @@
 
         function renderChart() {
             chartCtx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
-            
             if (chartData.length === 0) return;
 
-            // Y축 최대 스케일을 3.0으로 완전 고정하여 
-            // K값이 온도 변화 외에는 움직이지 않는 절대적 상수로 보이게 함
-            const maxY = 3.0; 
-            
+            const maxY = 3.0; // Q값 최대 스케일 3.0 고정
             const currentK = chartData[chartData.length-1].k;
-            const kY = chartCanvas.height - (currentK / maxY) * chartCanvas.height;
+            const kY = chartCanvas.height - (Math.min(currentK, maxY) / maxY) * chartCanvas.height;
             
-            // 이론적 평형 상수 K (고정점)
+            // 이론적 평형 상수 K (점선)
             chartCtx.beginPath();
             chartCtx.moveTo(0, kY);
             chartCtx.lineTo(chartCanvas.width, kY);
@@ -403,10 +443,10 @@
             chartCtx.stroke();
             chartCtx.setLineDash([]); 
 
-            // 순간 반응 지수 Q (시각성 대폭 강화)
+            // 순간 반응 지수 Q (흰선)
             chartCtx.beginPath();
-            chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-            chartCtx.lineWidth = 1.5;
+            chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            chartCtx.lineWidth = 1.0;
             for (let i = 0; i < chartData.length; i++) {
                 const x = chartCanvas.width - chartData.length + i;
                 const y = chartCanvas.height - (Math.min(chartData[i].qInst, maxY) / maxY) * chartCanvas.height;
@@ -415,7 +455,7 @@
             }
             chartCtx.stroke();
 
-            // 시간 평균 Q (수렴 추세)
+            // 시간 평균 Q (노란선)
             chartCtx.beginPath();
             chartCtx.strokeStyle = '#ffcc00';
             chartCtx.lineWidth = 3;
@@ -433,7 +473,8 @@
             chartCtx.fillText("값 (Q, K)", 5, 12);
         }
 
-        animate();
+        initSystem(); // 시뮬레이션 환경 초기화
+        animate();    // 메인 루프 실행
     </script>
 </body>
 </html>
