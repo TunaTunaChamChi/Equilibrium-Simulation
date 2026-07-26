@@ -259,7 +259,7 @@
             const current_E_AR = catalystActive ? BASE_E_AR - CATALYST_EFFECT : BASE_E_AR;
 
             // 안정적인 충돌 계산을 위한 서브스텝 (Substepping)
-            let numSubsteps = Math.max(1, Math.ceil(timeScale * 2));
+            let numSubsteps = Math.max(1, Math.ceil(timeScale * 15));
             let dt = timeScale / numSubsteps;
 
             for(let step = 0; step < numSubsteps; step++) {
